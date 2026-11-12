@@ -191,16 +191,22 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
 @keyframes scrollx{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 @media (prefers-reduced-motion:reduce){.tk-track{animation:none}}
 
-/* Ireland cartogram */
-.iemap{width:100%;max-width:400px;height:auto;display:block;margin:0 auto}
-.iemap .hx polygon{transition:fill-opacity .2s}
-.iemap .hx:hover polygon{fill-opacity:.95}
-.iemap .hx-a{font:700 11px Inter,sans-serif;fill:#fff;text-anchor:middle;pointer-events:none}
-.iemap .hx-v{font:600 9px Inter,sans-serif;fill:rgba(255,255,255,.88);text-anchor:middle;pointer-events:none}
-.maplegend{display:flex;gap:13px;flex-wrap:wrap;font-size:11px;color:var(--muted);
-  justify-content:center;margin-top:10px}
-.maplegend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-.maplegend .sel{color:var(--ink-2)}
+/* Ireland choropleth */
+.iewrap{background:linear-gradient(180deg,#eaf4f6,#dfeef1);border-radius:12px;padding:8px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .iewrap{background:linear-gradient(180deg,#0d2b38,#0a222d)}}
+:root[data-theme="dark"] .iewrap{background:linear-gradient(180deg,#0d2b38,#0a222d)}
+.iemap{width:100%;max-width:330px;height:auto;display:block;margin:0 auto}
+.iemap .iec{transition:filter .18s;cursor:default}
+.iemap .iec:hover{filter:brightness(1.08) saturate(1.15)}
+.iemap .iec.on{filter:saturate(1.2)}
+.iemap .iel{font:600 10px Inter,sans-serif;text-anchor:middle;pointer-events:none;letter-spacing:.02em}
+.iemap .ielv{font:700 9.5px Inter,sans-serif;text-anchor:middle;pointer-events:none}
+.maplegend{display:flex;gap:11px;flex-wrap:wrap;font-size:10.5px;color:var(--muted);
+  justify-content:center;margin-top:11px;align-items:center}
+.maplegend .mlk{font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:9.5px;color:var(--faint)}
+.maplegend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;
+  vertical-align:-2px;border:1px solid rgba(0,0,0,.12)}
+.mapsel{text-align:center;font-size:12px;color:var(--ink-2);margin-top:8px}
 .repmap{display:grid;gap:16px;grid-template-columns:minmax(220px,300px) 1fr;align-items:start}
 @media (max-width:700px){.repmap{grid-template-columns:1fr}}
 
@@ -327,6 +333,30 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
 .author .au-l{display:inline-block;font-size:12px;font-weight:600;margin-top:7px;text-decoration:none}
 .logos{display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin:16px 0}
 .logos img{height:44px;width:auto;opacity:.95}
+
+/* print */
+@media print{
+  @page{margin:14mm}
+  body{background:#fff;color:#000;font-size:10.5pt}
+  #rail,#topbar,#mobnav,.noprint,.runbar,.progwrap,.steps,.stepnav,.toast,.sitefoot{display:none!important}
+  .wrap{max-width:none;padding:0}
+  .page>.eyebrow,.page>h1,.page>.lead,.page>.small{display:none}
+  .report{border:0;box-shadow:none;padding:0;background:#fff}
+  .report h3{page-break-after:avoid;border-top:1px solid #999;color:#000}
+  .tablewrap{border:1px solid #999;box-shadow:none;page-break-inside:avoid;background:#fff}
+  table{min-width:0;font-size:9pt}
+  th{background:#f0f0f0;color:#000}
+  td,th{border-bottom:1px solid #ccc}
+  .opt{page-break-inside:avoid;border:1px solid #999;background:#fff}
+  .opt.on{background:#f4f9f7}
+  .iewrap{background:#fff;border:1px solid #ccc;page-break-inside:avoid}
+  .iemap{max-width:260px}
+  .repmap{page-break-inside:avoid}
+  .pill{border:1px solid #666;color:#000;background:#fff}
+  .kv dt{color:#333}
+  a{color:#000;text-decoration:none}
+  .rephead{border-bottom:2px solid #000}
+}
 </style>
 
 
@@ -356,6 +386,7 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
   </div>
 </div>
 <script src="data.js"></script>
+<script src="geo.js"></script>
 <script src="model.js"></script>
 <script src="params.js"></script>
 <script src="app.js"></script>

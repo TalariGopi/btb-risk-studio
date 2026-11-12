@@ -352,59 +352,69 @@ function siteFooter(){
   </footer>`;
 }
 
-const ABBR={'Donegal':'DL','Sligo':'SO','Leitrim':'LM','Cavan':'CN','Monaghan':'MN','Louth':'LH',
- 'Mayo':'MO','Roscommon':'RN','Longford':'LD','Westmeath':'WH','Meath':'MH','Dublin':'D',
- 'Galway':'G','Offaly':'OY','Kildare':'KE','Wicklow W':'WW','Wicklow E':'WE',
- 'Clare':'CE','Tipperary North':'TN','Laois':'LS','Carlow':'CW',
- 'Limerick':'LK','Tipperary South':'TS','Kilkenny':'KK','Wexford':'WX',
- 'Kerry':'KY','Cork North':'CN2','Waterford':'WD','Cork South':'CS'};
+/* Regional Veterinary Office areas aggregate into 26 counties for mapping.
+   Cork, Tipperary and Wicklow are each split into two RVOs; their herd-weighted
+   mean incidence is used for the county. */
+const CTY_ABBR={'Carlow':'CW','Cavan':'CN','Clare':'CE','Cork':'CO','Donegal':'DL','Dublin':'D',
+ 'Galway':'G','Kerry':'KY','Kildare':'KE','Kilkenny':'KK','Laois':'LS','Leitrim':'LM',
+ 'Limerick':'LK','Longford':'LD','Louth':'LH','Mayo':'MO','Meath':'MH','Monaghan':'MN',
+ 'Offaly':'OY','Roscommon':'RN','Sligo':'SO','Tipperary':'TA','Waterford':'WD',
+ 'Westmeath':'WH','Wexford':'WX','Wicklow':'WW'};
 
-const HEXROWS=[
- ['Donegal'],
- ['Sligo','Leitrim','Cavan','Monaghan','Louth'],
- ['Mayo','Roscommon','Longford','Westmeath','Meath','Dublin'],
- ['Galway','Offaly','Kildare','Wicklow W','Wicklow E'],
- ['Clare','Tipperary North','Laois','Carlow'],
- ['Limerick','Tipperary South','Kilkenny','Wexford'],
- ['Kerry','Cork North','Waterford'],
- ['Cork South']
-];
-const HEXOFF=[2,1,0.5,1.5,1.8,1.8,1.8,2.3];
+const RVO_TO_CTY={'Cork North':'Cork','Cork South':'Cork','Tipperary North':'Tipperary',
+ 'Tipperary South':'Tipperary','Wicklow W':'Wicklow','Wicklow E':'Wicklow'};
 
-function tierColour(inc){
-  if(inc<4) return 'var(--low)';
-  if(inc<7) return 'var(--mod)';
-  return 'var(--high)';
-}
-
-function irelandMapSVG(selected, opts){
-  opts=opts||{};
-  const s=28, dx=s*1.732, dy=s*1.5;
-  const W=7*dx+40, H=HEXROWS.length*dy+s*2+34;
-  let g='';
-  HEXROWS.forEach((row,ri)=>{
-    row.forEach((name,ci)=>{
-      const c=COUNTIES.find(x=>x.n===name); if(!c) return;
-      const cx=20+(HEXOFF[ri]+ci)*dx+dx/2, cy=24+s+ri*dy;
-      const pts=[[0,-s],[s*0.866,-s/2],[s*0.866,s/2],[0,s],[-s*0.866,s/2],[-s*0.866,-s/2]]
-        .map(p=>`${(cx+p[0]).toFixed(1)},${(cy+p[1]).toFixed(1)}`).join(' ');
-      const on=name===selected;
-      g+=`<g class="hx${on?' on':''}"><title>${esc(name)}: ${c.inc.toFixed(2)}% herd incidence, ${c.herds.toLocaleString()} herds</title>
-        <polygon points="${pts}" fill="${tierColour(c.inc)}" fill-opacity="${on?0.95:0.6}"
-          stroke="${on?'var(--ink)':'var(--surface)'}" stroke-width="${on?2.4:1.4}"/>
-        <text x="${cx}" y="${cy-1}" class="hx-a">${ABBR[name]||''}</text>
-        <text x="${cx}" y="${cy+11}" class="hx-v">${c.inc.toFixed(1)}</text></g>`;
-    });
+function countyStats(){
+  const m={};
+  COUNTIES.forEach(c=>{
+    const n=RVO_TO_CTY[c.n]||c.n;
+    if(!m[n]) m[n]={n, herds:0, w:0, rvos:[]};
+    m[n].herds+=c.herds; m[n].w+=c.inc*c.herds; m[n].rvos.push(c);
   });
-  return `<svg viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" class="iemap" role="img"
-    aria-label="Hexagon cartogram of the 29 Irish Regional Veterinary Office areas coloured by 2024 herd incidence">
-    ${g}</svg>
+  Object.values(m).forEach(x=>{ x.inc=x.w/x.herds; x.mult=x.inc/TIERS.NATIONAL.mean; });
+  return m;
+}
+const CTY_STATS=countyStats();
+
+/* sequential green ramp, pale for low incidence through to deep bottle green */
+const IE_RAMP=[
+  {max:3,  f:'#e4f3e7', t:'#14402b'},
+  {max:4,  f:'#bbe3c5', t:'#14402b'},
+  {max:5,  f:'#8bcc9f', t:'#10351f'},
+  {max:7,  f:'#55ac79', t:'#ffffff'},
+  {max:9,  f:'#2d885a', t:'#ffffff'},
+  {max:99, f:'#15603c', t:'#ffffff'}
+];
+const rampFor=v=>IE_RAMP.find(b=>v<b.max)||IE_RAMP[IE_RAMP.length-1];
+
+function irelandMapSVG(selectedRvo){
+  const selCty = selectedRvo ? (RVO_TO_CTY[selectedRvo]||selectedRvo) : null;
+  let paths='', labels='';
+  Object.keys(IE_COUNTIES).forEach(name=>{
+    const geo=IE_COUNTIES[name], st=CTY_STATS[name];
+    const inc=st?st.inc:0, col=rampFor(inc), on=name===selCty;
+    const detail = st ? (st.rvos.length>1
+      ? st.rvos.map(r=>`${r.n} ${r.inc.toFixed(2)}%`).join(', ')
+      : `${st.herds.toLocaleString()} herds`) : 'no data';
+    paths+=`<path d="${geo.d}" fill="${col.f}" stroke="${on?'var(--ink)':'rgba(255,255,255,.75)'}"
+      stroke-width="${on?2.6:0.9}" class="iec${on?' on':''}" stroke-linejoin="round">
+      <title>${esc(name)}: ${inc.toFixed(2)}% herd incidence, ${detail}</title></path>`;
+    labels+=`<text x="${geo.c[0]}" y="${geo.c[1]+(on?-2:3)}" class="iel" fill="${col.t}"
+      font-weight="${on?700:600}">${CTY_ABBR[name]||''}</text>`;
+    if(on) labels+=`<text x="${geo.c[0]}" y="${geo.c[1]+10}" class="ielv" fill="${col.t}">${inc.toFixed(1)}%</text>`;
+  });
+  const selSt = selCty?CTY_STATS[selCty]:null;
+  return `<div class="iewrap"><svg viewBox="0 0 ${IE_VIEW.w} ${IE_VIEW.h}" class="iemap" role="img"
+    aria-label="Choropleth map of Irish counties coloured by 2024 bovine tuberculosis herd incidence">
+    <g>${paths}</g><g>${labels}</g></svg></div>
   <div class="maplegend">
-    <span><i style="background:var(--low)"></i>Low, under 4%</span>
-    <span><i style="background:var(--mod)"></i>Medium, 4 to 7%</span>
-    <span><i style="background:var(--high)"></i>High, over 7%</span>
-    ${selected?`<span class="sel">Selected: <b>${esc(selected)}</b></span>`:''}
-  </div>`;
+    <span class="mlk">Herd incidence 2024</span>
+    ${IE_RAMP.map((b,i)=>`<span><i style="background:${b.f}"></i>${i===0?'under 3%':
+      i===IE_RAMP.length-1?'9% and over':(IE_RAMP[i-1].max+' to '+b.max+'%')}</span>`).join('')}
+  </div>
+  ${selSt?`<div class="mapsel">Selected: <b>${esc(selectedRvo)}</b>
+    ${RVO_TO_CTY[selectedRvo]?`&middot; mapped to County ${esc(selCty)}, herd-weighted ${selSt.inc.toFixed(2)}%`:''}
+    </div>`:''}`;
 }
 
 function pathwaySVG(){
@@ -527,8 +537,8 @@ V.home=()=>{
 
   <div class="split reveal">
     <div class="chartbox"><h3>Where this case sits</h3>
-      <div class="cap">All 29 Regional Veterinary Office areas by 2024 herd incidence. Each cell shows
-      its code and percentage.</div>
+      <div class="cap">Counties by 2024 herd incidence. Cork, Tipperary and Wicklow each combine two
+      Regional Veterinary Offices at their herd-weighted mean.</div>
       ${irelandMapSVG(COUNTIES.find(c=>c.n===P.county.v)?P.county.v:null)}</div>
     <div class="chartbox"><h3>Distribution of annual risk</h3>
       <div class="cap">Teal below the WHO 10&#8315;&#8310; reference, amber to 10&#8315;&#8309;, red above.</div>
@@ -996,8 +1006,7 @@ V.scenarios=()=>{
   <p>All 29 areas, 2024 herd incidence. Your current selection is outlined in both views.</p>
   <div class="split" style="margin-top:0">
     <div class="chartbox"><h3>Geographic layout</h3>
-      <div class="cap">Hexagon cartogram. Each area is one cell, so small areas such as Dublin stay
-      visible.</div>
+      <div class="cap">Counties shaded by 2024 herd incidence. The selected area is outlined.</div>
       ${irelandMapSVG(COUNTIES.find(c=>c.n===base.county)?base.county:null)}</div>
     <div class="chartbox"><h3>Ranked</h3>
       <div class="cap">The dashed rule is the national herd-weighted mean of 6.06%.</div>
@@ -1369,7 +1378,7 @@ V.surveillance=()=>{
   <h2>County league table, 2024</h2>
   <div class="split" style="margin-top:0">
     <div class="chartbox"><h3>Geographic layout</h3>
-      <div class="cap">Hexagon cartogram of the 29 Regional Veterinary Office areas.</div>
+      <div class="cap">Counties shaded by 2024 herd incidence, herd-weighted where an area splits.</div>
       ${irelandMapSVG(COUNTIES.find(c=>c.n===P.county.v)?P.county.v:null)}</div>
     <div class="chartbox"><h3>Ranked</h3>
       <div class="cap">Dashed rule marks the national herd-weighted mean.</div>
@@ -1625,8 +1634,9 @@ V.report=()=>{
   <h1>DAFM decision report</h1>
   <p class="lead">A self-contained record of this assessment: the case, the inputs and their sources,
   the result, the critical points and the management options with their legal basis.</p>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0">
-    <button class="btn" id="copyrec">Copy the report as text</button>
+  <div class="noprint" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0">
+    <button class="btn" id="printrec">Print or save as PDF</button>
+    <button class="btn ghost" id="copyrec">Copy as text</button>
     <button class="btn ghost" data-go="case">Change the case</button>
   </div>
   <div class="small" id="copymsg"></div>
@@ -1767,6 +1777,14 @@ V.report=()=>{
   </div>`;
 };
 V.report.after=()=>{
+  const pr=document.getElementById('printrec');
+  if(pr) pr.addEventListener('click',()=>{
+    if(window.self!==window.top){
+      toast('Printing is blocked inside this preview. Open the published site to print or save as PDF.');
+      return;
+    }
+    window.print();
+  });
   const b=document.getElementById('copyrec'); if(!b) return;
   b.addEventListener('click',()=>{
     const t=document.getElementById('reportbody').innerText;
