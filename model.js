@@ -119,7 +119,23 @@ function windowAnalysis(o){
 
 /* --------------------------------------------------------------- the model */
 
-function runModel(o, win){
+function runModel(o, win, onProgress, done){
+  const ctx = prepareRun(o, win);
+  if(!done){ runChunk(ctx, 0, ctx.n); return finaliseRun(ctx); }
+  const chunk = Math.max(500, Math.round(ctx.n/40));
+  let i = 0;
+  (function step(){
+    const to = Math.min(i+chunk, ctx.n);
+    runChunk(ctx, i, to);
+    i = to;
+    if(onProgress) onProgress(i/ctx.n);
+    if(i < ctx.n) setTimeout(step, 0);
+    else done(finaliseRun(ctx));
+  })();
+  return null;
+}
+
+function prepareRun(o, win){
   const n=Math.max(1000,Math.min(50000,Math.round(o.iters)));
   const W = win || windowAnalysis(o);
 
@@ -147,7 +163,17 @@ function runModel(o, win){
 
   const pasteurised = o.pasteurised===1;
 
-  for(let i=0;i<n;i++){
+  return {o,n,W,prevMult,shedMult,ruf,seasonMult,countyMult,lhsU:{uR,uShedPos,uShedNeg,uYield,
+    uServing,uDval,uMat,uCcP,uCcC,uCurd,uConc,uTret,uTdom,uStoreT},
+    arr:{risk,dose,btm,lrArr,cheeseConc,cases},X,pasteurised};
+}
+
+function runChunk(ctx, start, end){
+  const o=ctx.o, X=ctx.X, pasteurised=ctx.pasteurised;
+  const prevMult=ctx.prevMult, shedMult=ctx.shedMult, herdFactor=o.herdFactor, procFactor=o.procFactor;
+  const {uServing,uDval,uMat,uStoreT,uR}=ctx.lhsU;
+  const {risk,dose,btm,lrArr,cheeseConc,cases}=ctx.arr;
+  for(let i=start;i<end;i++){
     /* --- farm module --- */
     const nHerd  = o.herdSizeFixed>0 ? o.herdSizeFixed : rpert(o.nHerdMin,o.nHerdMode,o.nHerdMax);
     const pHerd  = rbeta(o.pHerdA,o.pHerdB);                       /* proportion */
@@ -210,6 +236,12 @@ function runModel(o, win){
     X.pWithin[i]=pWith; X.nHerd[i]=nHerd;
   }
 
+}
+
+function finaliseRun(ctx){
+  const o=ctx.o, n=ctx.n, X=ctx.X;
+  const {risk,dose,btm,lrArr,cases}=ctx.arr;
+  const cheeseConc=ctx.arr.cheeseConc;
   const mean=a=>{let s=0;for(let i=0;i<a.length;i++)s+=a[i];return s/a.length;};
   const sortedRisk=Float64Array.from(risk).sort();
   const sortedCases=Float64Array.from(cases).sort();
@@ -219,7 +251,8 @@ function runModel(o, win){
   const events=o.servingsFixed>0?o.servingsFixed:o.freqWeek*52;
 
   return {
-    n, risk, dose, btm, X, prevMult, shedMult, ruf, seasonMult, countyMult, window:W,
+    n, risk, dose, btm, X, prevMult:ctx.prevMult, shedMult:ctx.shedMult, ruf:ctx.ruf,
+    seasonMult:ctx.seasonMult, countyMult:ctx.countyMult, window:ctx.W,
     meanRisk, sd,
     median:percentile(sortedRisk,0.5), p05:percentile(sortedRisk,0.05),
     p95:percentile(sortedRisk,0.95), p25:percentile(sortedRisk,0.25),

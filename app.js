@@ -304,6 +304,109 @@ const tile=(k,v,s,accent)=>`<div class="tile${accent?' accent':''}"><div class="
 
 const pill=(cls,txt)=>`<span class="pill ${cls}">${txt}</span>`;
 
+function logoMark(size){
+  const s=size||40;
+  return `<svg class="logomark" width="${s}" height="${s}" viewBox="0 0 40 40" aria-hidden="true">
+    <defs><linearGradient id="lgm" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="var(--brand-2)"/><stop offset="1" stop-color="var(--brand)"/>
+    </linearGradient></defs>
+    <rect width="40" height="40" rx="11" fill="url(#lgm)"/>
+    <path d="M8.5 26.5 L20 11 L31.5 26.5 Z" fill="#fff" opacity=".96"/>
+    <circle cx="16.4" cy="22.6" r="2" fill="var(--brand)"/>
+    <circle cx="24" cy="23.4" r="1.4" fill="var(--brand)"/>
+    <rect x="18.2" y="16.4" width="6.6" height="2.8" rx="1.4" fill="var(--brand)" transform="rotate(-24 21.5 17.8)"/>
+  </svg>`;
+}
+
+function tickerItems(){
+  const r=RESULT, l=NATIONAL[NATIONAL.length-1];
+  const hi=COUNTIES[0], lo=COUNTIES[COUNTIES.length-1];
+  const items=[
+    ['National herd incidence 2024', l.inc.toFixed(2)+'%'],
+    ['Reactors 2024', l.reactors.toLocaleString()],
+    ['Restricted herds', l.restricted.toLocaleString()],
+    ['Highest RVO', hi.n+' '+hi.inc.toFixed(2)+'%'],
+    ['Lowest RVO', lo.n+' '+lo.inc.toFixed(2)+'%'],
+    ['Surveillance series', '2010 to 2024'],
+    ['Regional Veterinary Offices', '29'],
+    ['Mean annual risk', r?sci(r.meanRisk):'—'],
+    ['WHO reference ratio', r?fix(r.whoRatio,3):'—'],
+    ['Log reduction', r?fix(r.meanLr,2)+' log₁₀':'—'],
+    ['Iterations', r?r.n.toLocaleString():'—']
+  ];
+  return items.map(([k,v])=>`<span class="tk-i"><em>${k}</em><b>${v}</b></span>`).join('');
+}
+
+function siteFooter(){
+  return `<footer class="sitefoot">
+    <div class="sf-l">
+      <div class="sf-dev">Developed by <strong>Gopi Talari</strong>, Teagasc Food Research Centre, Moorepark</div>
+    </div>
+    <div class="sf-r">
+      <a href="https://www.teagasc.ie" target="_blank" rel="noopener" aria-label="Teagasc">
+        <img src="assets/teagasc.png" alt="Teagasc"></a>
+      <a href="https://www.gov.ie/en/organisation/department-of-agriculture-food-and-the-marine/"
+         target="_blank" rel="noopener" aria-label="Department of Agriculture, Food and the Marine">
+        <img src="assets/dafm.png" alt="Department of Agriculture, Food and the Marine"></a>
+    </div>
+  </footer>`;
+}
+
+const ABBR={'Donegal':'DL','Sligo':'SO','Leitrim':'LM','Cavan':'CN','Monaghan':'MN','Louth':'LH',
+ 'Mayo':'MO','Roscommon':'RN','Longford':'LD','Westmeath':'WH','Meath':'MH','Dublin':'D',
+ 'Galway':'G','Offaly':'OY','Kildare':'KE','Wicklow W':'WW','Wicklow E':'WE',
+ 'Clare':'CE','Tipperary North':'TN','Laois':'LS','Carlow':'CW',
+ 'Limerick':'LK','Tipperary South':'TS','Kilkenny':'KK','Wexford':'WX',
+ 'Kerry':'KY','Cork North':'CN2','Waterford':'WD','Cork South':'CS'};
+
+const HEXROWS=[
+ ['Donegal'],
+ ['Sligo','Leitrim','Cavan','Monaghan','Louth'],
+ ['Mayo','Roscommon','Longford','Westmeath','Meath','Dublin'],
+ ['Galway','Offaly','Kildare','Wicklow W','Wicklow E'],
+ ['Clare','Tipperary North','Laois','Carlow'],
+ ['Limerick','Tipperary South','Kilkenny','Wexford'],
+ ['Kerry','Cork North','Waterford'],
+ ['Cork South']
+];
+const HEXOFF=[2,1,0.5,1.5,1.8,1.8,1.8,2.3];
+
+function tierColour(inc){
+  if(inc<4) return 'var(--low)';
+  if(inc<7) return 'var(--mod)';
+  return 'var(--high)';
+}
+
+function irelandMapSVG(selected, opts){
+  opts=opts||{};
+  const s=28, dx=s*1.732, dy=s*1.5;
+  const W=7*dx+40, H=HEXROWS.length*dy+s*2+34;
+  let g='';
+  HEXROWS.forEach((row,ri)=>{
+    row.forEach((name,ci)=>{
+      const c=COUNTIES.find(x=>x.n===name); if(!c) return;
+      const cx=20+(HEXOFF[ri]+ci)*dx+dx/2, cy=24+s+ri*dy;
+      const pts=[[0,-s],[s*0.866,-s/2],[s*0.866,s/2],[0,s],[-s*0.866,s/2],[-s*0.866,-s/2]]
+        .map(p=>`${(cx+p[0]).toFixed(1)},${(cy+p[1]).toFixed(1)}`).join(' ');
+      const on=name===selected;
+      g+=`<g class="hx${on?' on':''}"><title>${esc(name)}: ${c.inc.toFixed(2)}% herd incidence, ${c.herds.toLocaleString()} herds</title>
+        <polygon points="${pts}" fill="${tierColour(c.inc)}" fill-opacity="${on?0.95:0.6}"
+          stroke="${on?'var(--ink)':'var(--surface)'}" stroke-width="${on?2.4:1.4}"/>
+        <text x="${cx}" y="${cy-1}" class="hx-a">${ABBR[name]||''}</text>
+        <text x="${cx}" y="${cy+11}" class="hx-v">${c.inc.toFixed(1)}</text></g>`;
+    });
+  });
+  return `<svg viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" class="iemap" role="img"
+    aria-label="Hexagon cartogram of the 29 Irish Regional Veterinary Office areas coloured by 2024 herd incidence">
+    ${g}</svg>
+  <div class="maplegend">
+    <span><i style="background:var(--low)"></i>Low, under 4%</span>
+    <span><i style="background:var(--mod)"></i>Medium, 4 to 7%</span>
+    <span><i style="background:var(--high)"></i>High, over 7%</span>
+    ${selected?`<span class="sel">Selected: <b>${esc(selected)}</b></span>`:''}
+  </div>`;
+}
+
 function pathwaySVG(){
   const st=[
     ['Herd','infected cows'],['Bulk tank','dilution'],['Cheese make','curd partition'],
@@ -344,6 +447,7 @@ function windowTimeline(W){
 const NAV=[
   {g:'Overview'},
   {id:'home', t:'Home'},
+  {id:'project', t:'The project'},
   {id:'how',  t:'How it works'},
   {g:'Assessment'},
   {id:'case', t:'Case setup'},
@@ -374,77 +478,162 @@ V.home=()=>{
   return `
   <div class="hero">
     <div class="ht">
-      <div class="eyebrow" style="color:var(--brand-2)">Teagasc Moorepark · DAFM PSSRC Topic 8.1</div>
-      <h1>Decision support for raw-milk cheese made inside the bTB retrospective window</h1>
-      <p>Enter the herd, the dates and the product. The tool runs a farm-to-fork quantitative
-      microbial risk assessment for <em>Mycobacterium bovis</em> against 15 years of CSO
-      surveillance data and returns a risk band, an evidence trail and a decision report.</p>
+      <div class="brandblock">${logoMark(62)}
+        <div><h1>bTB-RISK Studio</h1>
+          <div class="sub">Quantitative microbial risk assessment of <em>Mycobacterium bovis</em>
+          in unpasteurised cheese</div></div></div>
+      <div class="projline">DAFM PSSRC Topic 8.1 &middot; Teagasc Food Research Centre, Moorepark</div>
       <div class="herobtns">
-        <button class="btn" data-go="case">Open case setup</button>
-        <button class="btn ghost light" data-go="how">How it works</button>
+        <button class="btn" data-go="case">Start an assessment</button>
+        <button class="btn ghost light" data-go="project">About the project</button>
       </div>
-      <div class="tagrow"><span>29 Regional Veterinary Offices</span><span>CSO DAA01 · DAQ01 · DAQ02</span>
-        <span>Latin hypercube, ${o.iters.toLocaleString()} iterations</span><span>Runs in your browser</span></div>
     </div>
-    <div class="hi"><img src="assets/hero.jpg" alt="Irish dairy herd, raw milk and cheese with a surveillance overlay"></div>
+    <div class="hi"><img src="assets/hero.jpg" alt="Irish dairy herd, raw milk and cheese"></div>
   </div>
 
-  <div class="statusbar">
-    <div><span class="k">Case</span><b>${esc(c.n)}</b> · ${o.herdSize} cows · ${CHEESETYPES[o.cheese].label}</div>
+  <div class="ticker" aria-hidden="true"><div class="tk-track">${tickerItems()}${tickerItems()}</div></div>
+
+  <div class="statusbar reveal">
+    <div><span class="k">Case</span><b>${esc(c.n)}</b> &middot; ${o.herdSize} cows &middot; ${CHEESETYPES[o.cheese].label}</div>
     <div><span class="k">Window</span><b>${WIN.position}</b></div>
     <div><span class="k">Verdict</span>${pill(b.cls,b.k)}</div>
-    <button class="btn sm" id="run">Re-run</button>
+    <button class="btn sm" id="run">Run simulation</button>
+  </div>
+  <div class="progwrap" id="progwrap" hidden>
+    <div class="progbar"><div class="progfill" id="progfill"></div></div>
+    <div class="progtxt" id="progtxt">Preparing</div>
   </div>
 
-  <div class="grid g4" style="margin-top:16px">
+  <div class="grid g4 reveal" style="margin-top:14px">
     ${tile('Mean annual risk',sci(r.meanRisk),'per consumer per year',true)}
     ${tile('Risk per serving',sci(r.riskServing),'single eating occasion')}
-    ${tile('90% interval',sci(r.p05,1)+' – '+sci(r.p95,1),'5th to 95th percentile')}
-    ${tile('Expected cases',fix(r.cases,4),'per year, '+Math.round(r.pop).toLocaleString()+' consumers')}
+    ${tile('90% interval',sci(r.p05,1)+' &ndash; '+sci(r.p95,1),'5th to 95th percentile')}
+    ${tile('Expected cases',fix(r.cases,4),Math.round(r.pop).toLocaleString()+' consumers')}
   </div>
 
-  <div class="card pathcard">
+  <div class="card pathcard reveal">
     <div class="pathhead"><h3>Exposure pathway</h3>
-      <span class="small">Each stage is a model module. Values below are means across ${r.n.toLocaleString()} iterations.</span></div>
+      <span class="small">Means across ${r.n.toLocaleString()} iterations</span></div>
     ${pathwaySVG()}
     <div class="pathvals">
-      <div><span>Infected cow probability</span><b>${fix(r.prevMult*0.0399*0.0982*o.herdSize,4)}</b></div>
       <div><span>Bulk tank</span><b>${sci(r.meanBtm)} CFU/mL</b></div>
-      <div><span>Log reduction</span><b>${fix(r.meanLr,2)} log₁₀</b></div>
+      <div><span>Log reduction</span><b>${fix(r.meanLr,2)} log&#8321;&#8320;</b></div>
       <div><span>At consumption</span><b>${sci(r.meanConc)} CFU/g</b></div>
       <div><span>Dose per serving</span><b>${sci(r.meanDose)} CFU</b></div>
       <div><span>Annual risk</span><b>${sci(r.meanRisk)}</b></div>
+      <div><span>WHO ratio</span><b>${fix(r.whoRatio,3)}</b></div>
     </div>
   </div>
 
-  <div class="split">
+  <div class="split reveal">
+    <div class="chartbox"><h3>Where this case sits</h3>
+      <div class="cap">All 29 Regional Veterinary Office areas by 2024 herd incidence. Each cell shows
+      its code and percentage.</div>
+      ${irelandMapSVG(COUNTIES.find(c=>c.n===P.county.v)?P.county.v:null)}</div>
     <div class="chartbox"><h3>Distribution of annual risk</h3>
-      <div class="cap">Teal below the WHO 10⁻⁶ reference, amber between 10⁻⁶ and 10⁻⁵, red above.</div>
+      <div class="cap">Teal below the WHO 10&#8315;&#8310; reference, amber to 10&#8315;&#8309;, red above.</div>
       <canvas id="c-hist"></canvas></div>
     <div class="chartbox"><h3>National bTB trend</h3>
-      <div class="cap">Herd incidence has risen from a 15-year low of 3.27% in 2016 to 6.04% in 2024.</div>
+      <div class="cap">Herd incidence, 2010 to 2024, against reactor numbers.</div>
       <canvas id="c-trend"></canvas></div>
   </div>
 
-  <h2>What the tool is for</h2>
-  <div class="grid g3">
-    <div class="card"><h3>A specific policy question</h3><p class="small">Milk collected between the last
-    clear tuberculin test and the loss of TB-free status may already be in cheese that is matured and
-    sold. Prospective controls do not address it. This tool quantifies that exposure.</p></div>
-    <div class="card"><h3>Irish data, not borrowed assumptions</h3><p class="small">Herd size, herd
-    incidence and county multipliers are fitted to CSO DAA01 and DAQ02 returns across all 29 Regional
-    Veterinary Offices. Consumption comes from the IUNA national survey.</p></div>
-    <div class="card"><h3>An auditable answer</h3><p class="small">Every input carries a distribution,
-    a source and a provenance class. The decision report reproduces the full parameter set beside the
-    result so a case can be re-run and checked.</p></div>
-  </div>
-
-  <div class="warn" style="margin-top:20px"><strong>Research decision-support tool.</strong> Outputs
-  are scientific evidence for a risk manager. They are not a legal safe or unsafe determination and
-  do not authorise or prohibit the sale of any product.</div>`;
+  ${siteFooter()}`;
 };
 V.home.after=()=>{ const r=ensure(); chartHist(document.getElementById('c-hist'),r);
   chartTrend(document.getElementById('c-trend')); };
+
+/* ---------- the project ---------- */
+V.project=()=>`
+  <div class="eyebrow">Background</div>
+  <h1>The project</h1>
+  <p class="lead">A twelve-month study funded by the Department of Agriculture, Food and the Marine
+  under the Public Service Support and Research Contract, to quantify consumer risk from
+  unpasteurised cheese made during the bovine tuberculosis retrospective window.</p>
+
+  <div class="grid g4 reveal" style="margin-top:16px">
+    ${tile('Funder','DAFM','PSSRC 2023PSSRC916',true)}
+    ${tile('Topic','8.1','Farm-to-fork QMRA')}
+    ${tile('Host','Teagasc','Moorepark Food Research Centre')}
+    ${tile('Scope','29 RVOs','All Irish veterinary office areas')}
+  </div>
+
+  <h2>Why the question arises</h2>
+  <p>Unpasteurised cheese production has expanded across Europe, and Ireland now has more than sixty
+  registered farmhouse and artisanal producers. Because these cheeses receive no thermal
+  pasteurisation, any pathogen present in the milk may survive into the finished product.</p>
+  <p><em>Mycobacterium bovis</em>, the agent of bovine tuberculosis, remains relevant wherever the
+  disease is endemic in cattle. Ireland reports roughly six notified zoonotic tuberculosis cases each
+  year, and national herd incidence has deteriorated from a fifteen-year low of 3.27 per cent in 2016
+  to 6.04 per cent in 2024, with 41,682 reactors recorded in that year.</p>
+
+  <h2>The regulatory gap</h2>
+  <div class="grid g3 reveal">
+    <div class="card"><div class="stepno">1</div><h3>Clear test</h3><p class="small">The herd passes the
+    single intradermal comparative tuberculin test. Milk enters the vat under normal rules and cheese
+    is made and sold.</p></div>
+    <div class="card" style="border-left:3px solid var(--mod)"><div class="stepno" style="background:color-mix(in srgb,var(--mod) 18%,transparent);color:var(--mod)">2</div>
+    <h3>Risk window</h3><p class="small">Infection is present but undetected. The test has a
+    herd-level sensitivity near 0.75 and infection takes time to produce a detectable response.
+    Cheese made in this interval is often matured and sold before anyone knows.</p></div>
+    <div class="card"><div class="stepno">3</div><h3>Detection</h3><p class="small">A later test removes
+    TB-free status. Because artisan maturation runs from sixty to three hundred and sixty-five days,
+    product from the window can still be in circulation.</p></div>
+  </div>
+  <p>Regulation (EC) No 853/2004 prohibits milk from restricted herds entering the food chain without
+  heat treatment, but it governs the period after detection. Neither European nor national frameworks
+  address product already made from milk collected before detection. That is the gap this project
+  addresses.</p>
+
+  <h2>Aim</h2>
+  <div class="note">To develop a quantitative microbial risk assessment that estimates human exposure
+  to <em>M. bovis</em> from raw-milk cheese produced by herds that subsequently lose bovine
+  tuberculosis-free status, and to deliver it as a transparent, reusable decision-support tool for
+  the competent authority.</div>
+
+  <h2>Objectives</h2>
+  <div class="tablewrap"><table>
+    <tr><th>#</th><th>Objective</th><th>Delivered as</th></tr>
+    <tr><td>1</td><td>Map the farm-to-fork exposure pathway from herd to plate</td><td>Six-module model structure</td></tr>
+    <tr><td>2</td><td>Integrate official CSO and DAFM surveillance data into parameterisation</td>
+      <td>Fitted distributions from DAA01, DAQ01 and DAQ02, 2010 to 2024</td></tr>
+    <tr><td>3</td><td>Model <em>M. bovis</em> survival through curd, maturation and storage</td>
+      <td>Log-linear D-value kinetics with temperature-adjusted post-ripening decay</td></tr>
+    <tr><td>4</td><td>Quantify uncertainty and identify dominant assumptions</td>
+      <td>Latin hypercube Monte Carlo with standardised regression sensitivity analysis</td></tr>
+    <tr><td>5</td><td>Compare raw milk against pasteurisation and across county risk profiles</td>
+      <td>Scenario engine covering all 29 Regional Veterinary Office areas</td></tr>
+    <tr><td>6</td><td>Deliver a reusable decision-support template for DAFM</td>
+      <td>This tool and its decision report</td></tr>
+  </table></div>
+
+  <h2>Approach</h2>
+  <p>The assessment follows the four-step framework endorsed by the European Food Safety Authority
+  and Codex Alimentarius CAC/GL 30-1999: hazard identification, hazard characterisation, exposure
+  assessment and risk characterisation. The reference implementation was built in Microsoft Excel
+  with the @RISK add-in. This tool reimplements that model in the browser so that a case can be run
+  without specialist software and the full parameter set stays visible to a reviewer.</p>
+
+  <h2>What the tool adds</h2>
+  <div class="grid g3 reveal">
+    <div class="card"><h3>Irish data throughout</h3><p class="small">Herd size, herd incidence and
+    county multipliers are fitted to official returns rather than borrowed from elsewhere.</p></div>
+    <div class="card"><h3>Uncertainty kept visible</h3><p class="small">Every input is a distribution.
+    Results are reported as percentile bands because the dominant parameter has no validated human
+    estimate.</p></div>
+    <div class="card"><h3>An auditable trail</h3><p class="small">Each input carries its source and a
+    provenance class, and the decision report reproduces the full set beside the result.</p></div>
+  </div>
+
+  <h2>Key message</h2>
+  <p>Hazard, then exposure, then health impact, then a proportionate decision. The tool supplies the
+  first three so that the fourth rests on evidence rather than judgement alone.</p>
+
+  <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">
+    <button class="btn" data-go="case">Start an assessment</button>
+    <button class="btn ghost" data-go="how">How the model works</button>
+  </div>
+  ${siteFooter()}`;
 
 /* ---------- how it works ---------- */
 V.how=()=>`
@@ -541,7 +730,8 @@ function field(k){
 }
 
 V.case=()=>{
-  const g=GROUPS.find(x=>x.id===GROUP)||GROUPS[0];
+  const gi=Math.max(0,GROUPS.findIndex(x=>x.id===GROUP));
+  const g=GROUPS[gi];
   const r=RESULT, o=gather();
   return `
   <div class="eyebrow">Assessment</div>
@@ -555,6 +745,15 @@ V.case=()=>{
     ${groupIntro(g.id)}
     <div class="grid g2" style="margin-top:14px">${g.keys.map(field).join('')}</div>
     ${groupReadout(g.id,o)}
+  </div>
+  <div class="stepnav">
+    <button class="btn ghost" data-grp="${GROUPS[Math.max(0,gi-1)].id}"${gi===0?' disabled':''}>&larr; ${gi===0?'Previous':GROUPS[gi-1].t}</button>
+    <span class="stepcount">Step ${gi+1} of ${GROUPS.length}</span>
+    <button class="btn ghost" data-grp="${GROUPS[Math.min(GROUPS.length-1,gi+1)].id}"${gi===GROUPS.length-1?' disabled':''}>${gi===GROUPS.length-1?'Next':GROUPS[gi+1].t} &rarr;</button>
+  </div>
+  <div class="progwrap" id="progwrap" hidden>
+    <div class="progbar"><div class="progfill" id="progfill"></div></div>
+    <div class="progtxt" id="progtxt">Preparing</div>
   </div>
   <div class="runbar">
     <button class="btn" id="run">Run ${o.iters.toLocaleString()} iterations</button>
@@ -794,9 +993,16 @@ V.scenarios=()=>{
     governs what reaches the plate.</p></div>
 
   <h2>Individual Regional Veterinary Offices</h2>
-  <p>All 29 areas, 2024 herd incidence. The dashed rule is the national herd-weighted mean. Your
-  current selection is outlined.</p>
-  <div class="chartbox"><canvas id="c-cty"></canvas></div>
+  <p>All 29 areas, 2024 herd incidence. Your current selection is outlined in both views.</p>
+  <div class="split" style="margin-top:0">
+    <div class="chartbox"><h3>Geographic layout</h3>
+      <div class="cap">Hexagon cartogram. Each area is one cell, so small areas such as Dublin stay
+      visible.</div>
+      ${irelandMapSVG(COUNTIES.find(c=>c.n===base.county)?base.county:null)}</div>
+    <div class="chartbox"><h3>Ranked</h3>
+      <div class="cap">The dashed rule is the national herd-weighted mean of 6.06%.</div>
+      <canvas id="c-cty"></canvas></div>
+  </div>
 
   <h2>Raw milk against pasteurisation</h2>
   <div class="tablewrap"><table>
@@ -1161,7 +1367,14 @@ V.surveillance=()=>{
   across the full series is 1.89%.</p>
 
   <h2>County league table, 2024</h2>
-  <div class="chartbox"><canvas id="c-cty2"></canvas></div>
+  <div class="split" style="margin-top:0">
+    <div class="chartbox"><h3>Geographic layout</h3>
+      <div class="cap">Hexagon cartogram of the 29 Regional Veterinary Office areas.</div>
+      ${irelandMapSVG(COUNTIES.find(c=>c.n===P.county.v)?P.county.v:null)}</div>
+    <div class="chartbox"><h3>Ranked</h3>
+      <div class="cap">Dashed rule marks the national herd-weighted mean.</div>
+      <canvas id="c-cty2"></canvas></div>
+  </div>
   <div class="tablewrap" style="margin-top:14px"><table>
     <tr><th>Rank</th><th>Regional Veterinary Office</th><th>Herds</th><th>Herd incidence</th>
       <th>Tier</th><th>Multiplier</th></tr>
@@ -1444,14 +1657,35 @@ V.report=()=>{
       <tr><td>Test type and sensitivity</td><td>SICTT, Se ${fix(o.seTst,3)}, Sp ${fix(o.spTst,3)}</td><td>Clegg et al. 2011</td></tr>
     </table></div>
 
-    <h3>3. Retrospective window determination</h3>
+    <h3>3. Geographic context</h3>
+    <div class="repmap">
+      <div>${irelandMapSVG(COUNTIES.find(x=>x.n===o.county)?o.county:null)}</div>
+      <div>
+        <p class="small">${COUNTIES.find(x=>x.n===o.county)
+          ? `This case sits in <strong>${esc(o.county)}</strong>, which recorded ${fix(c.inc,2)}% herd
+             incidence in 2024 against a national herd-weighted mean of ${fix(TIERS.NATIONAL.mean,2)}%.
+             That places it in the <strong>${c.tier==='MED'?'MEDIUM':c.tier}</strong> tier and applies a
+             prevalence multiplier of ${fix(c.mult,3)}.`
+          : `This assessment uses the <strong>${esc(o.county)}</strong> profile rather than a single
+             Regional Veterinary Office. The map shows the 29 areas for context; the national
+             herd-weighted mean is ${fix(TIERS.NATIONAL.mean,2)}%.`}</p>
+        <div class="tablewrap"><table>
+          <tr><th>Tier</th><th>Areas</th><th>Herd-weighted mean</th><th>Multiplier</th></tr>
+          ${['HIGH','MED','LOW'].map(k=>`<tr><td>${k==='MED'?'MEDIUM':k}</td>
+            <td class="num">${TIERS[k].counties}</td><td class="num">${fix(TIERS[k].mean,2)}%</td>
+            <td class="num">${fix(TIERS[k].mult,3)}×</td></tr>`).join('')}
+        </table></div>
+      </div>
+    </div>
+
+    <h3>4. Retrospective window determination</h3>
     <p><strong>${W.position}.</strong> ${W.plain}</p>
     <dl class="kv"><dt>Window length</dt><dd>${W.windowDays} days</dd>
       <dt>Production offset</dt><dd>${W.daysAfterClear} days after the last clear test</dd>
       <dt>Elapsed fraction</dt><dd>${fix(W.elapsed,4)}</dd>
       <dt>Retrospective uncertainty factor</dt><dd>${fix(r.ruf,4)}×</dd></dl>
 
-    <h3>4. Model and data sources</h3>
+    <h3>5. Model and data sources</h3>
     <div class="tablewrap"><table>
       <tr><th>Module</th><th>Basis</th><th>Source</th></tr>
       <tr><td>Herd infection</td><td>Beta(58.02, 1394.92) herd incidence; Beta(2.8, 25.7) within-herd prevalence</td>
@@ -1472,7 +1706,7 @@ V.report=()=>{
         <td>bTB-RISK Studio engine, reimplementing the @RISK workbook of 19 May 2026</td></tr>
     </table></div>
 
-    <h3>5. Exposure assessment</h3>
+    <h3>6. Exposure assessment</h3>
     <div class="tablewrap"><table>
       <tr><th>Stage</th><th>Mean</th><th>Unit</th></tr>
       <tr><td>Prevalence multiplier applied</td><td class="num">${fix(r.prevMult,4)}</td><td>×</td></tr>
@@ -1483,7 +1717,7 @@ V.report=()=>{
       <tr><td>Dose per serving</td><td class="num">${sci(r.meanDose)}</td><td>CFU</td></tr>
     </table></div>
 
-    <h3>6. Risk characterisation</h3>
+    <h3>7. Risk characterisation</h3>
     <div class="tablewrap"><table>
       <tr><th>Output</th><th>Mean</th><th>Median</th><th>5th to 95th percentile</th></tr>
       <tr><td>Risk per serving</td><td class="num">${sci(r.riskServing)}</td><td class="num">—</td><td class="num">—</td></tr>
@@ -1497,7 +1731,7 @@ V.report=()=>{
     <p><strong>Risk band: ${b.t}.</strong> ${b.note} ${fix(100*count(r.risk,1e-6)/r.n,1)}% of iterations
     exceed the WHO reference level.</p>
 
-    <h3>7. Critical points for the risk manager</h3>
+    <h3>8. Critical points for the risk manager</h3>
     <div class="tablewrap"><table>
       <tr><th>Point</th><th>This case</th><th>Status</th><th>Comment</th></tr>
       ${crit.map(p=>`<tr><td>${p.n}</td><td class="num">${p.v}</td>
@@ -1505,7 +1739,7 @@ V.report=()=>{
         <td class="small">${p.c}</td></tr>`).join('')}
     </table></div>
 
-    <h3>8. Management options</h3>
+    <h3>9. Management options</h3>
     <div class="optlist">
       ${opts.map((x,i)=>`<div class="opt${x.rec?' on':''}">
         <div class="opt-h"><span class="opt-n">Option ${i+1}</span><b>${x.k}</b>
@@ -1515,13 +1749,13 @@ V.report=()=>{
           <dt>Consequence</dt><dd>${x.cost}</dd></dl></div>`).join('')}
     </div>
 
-    <h3>9. Recommendation</h3>
+    <h3>10. Recommendation</h3>
     <p>On the inputs recorded above, the assessment indicates <strong>${rec.k.toLowerCase()}</strong>.
     ${rec.basis} This is a scientific risk-assessment output. The decision rests with the competent
     authority and should also weigh batch volume, traceability, the consumer profile and any facility
     findings that sit outside this model.</p>
 
-    <h3>10. Uncertainty statement</h3>
+    <h3>11. Uncertainty statement</h3>
     <p>The dominant source of uncertainty is the infectivity parameter, which carries a standardised
     regression coefficient of ${r.src.terms[0].src.toFixed(3)} and for which no validated human oral
     dose-response model exists. The cross-contamination terms rank next and rest on elicited rather than
@@ -1529,8 +1763,7 @@ V.report=()=>{
     does not include structural uncertainty about the model itself.</p>
 
     <div class="repfoot">Produced with bTB-RISK Studio, Teagasc Food Research Centre Moorepark, under
-    DAFM PSSRC Topic 8.1, reference 2023PSSRC916. Decision-support evidence only. Not a legal safe or
-    unsafe determination.</div>
+    DAFM PSSRC Topic 8.1, reference 2023PSSRC916.</div>
   </div>`;
 };
 V.report.after=()=>{
@@ -1565,7 +1798,7 @@ V.about=()=>`
   <div class="authors">
     ${[
       {n:'Gopaiah Talari', a:'Teagasc Food Research Centre, Moorepark', aff:1,
-       role:'Model development and tool author', mail:'gopaiah.talari@teagasc.ie',
+       role:'Model development and tool author', mail:'talarigopiniper@gmail.com',
        link:'https://people.ucd.ie/gopi.talari', linkt:'UCD profile', corr:true},
       {n:'Önay Burak Doğan', a:'Middle East Technical University (METU), Ankara', aff:4, role:'Quantitative risk modelling'},
       {n:'Uma Tiwari', a:'Technological University Dublin', aff:3, role:'Exposure assessment'},
@@ -1652,21 +1885,55 @@ document.addEventListener('click',e=>{
   const go=e.target.closest('[data-go]');
   if(go){ location.hash='#'+go.dataset.go; return; }
   const grp=e.target.closest('[data-grp]');
-  if(grp){ GROUP=grp.dataset.grp; route(); return; }
+  if(grp && !grp.disabled){ GROUP=grp.dataset.grp; route(); window.scrollTo({top:0,behavior:'smooth'}); return; }
   if(e.target.id==='mobtoggle'){
     const m=document.getElementById('mobnav'); m.classList.toggle('open');
     e.target.setAttribute('aria-expanded',m.classList.contains('open')); return;
   }
-  if(e.target.id==='run'){
-    const b=e.target, lbl=b.textContent; b.disabled=true; b.textContent='Running…';
-    setTimeout(()=>{ recompute();
-      const s=document.getElementById('runstate');
-      if(s) s.textContent=`Mean annual risk ${sci(RESULT.meanRisk)} · median ${sci(RESULT.median)} · 95th ${sci(RESULT.p95)}`;
-      b.disabled=false; b.textContent=lbl;
-      if((location.hash||'#home').slice(1)==='home') route();
-    },30);
-  }
+  if(e.target.id==='run'){ startRun(e.target); }
 });
+
+function toast(msg, action){
+  document.querySelectorAll('.toast').forEach(t=>t.remove());
+  const d=document.createElement('div');
+  d.className='toast';
+  d.innerHTML=`<span class="tk">&#10003;</span><div><b>${msg}</b></div>
+    ${action?`<button class="btn sm" data-go="${action}">View results</button>`:''}
+    <button class="tx" aria-label="Dismiss">&times;</button>`;
+  document.body.appendChild(d);
+  requestAnimationFrame(()=>d.classList.add('in'));
+  d.querySelector('.tx').addEventListener('click',()=>d.remove());
+  setTimeout(()=>{ d.classList.remove('in'); setTimeout(()=>d.remove(),400); },7000);
+}
+
+let RUNNING=false;
+function startRun(btn){
+  if(RUNNING) return;
+  RUNNING=true;
+  const lbl=btn?btn.textContent:'';
+  if(btn){ btn.disabled=true; btn.textContent='Running'; }
+  const wrap=document.getElementById('progwrap'), fill=document.getElementById('progfill'),
+        txt=document.getElementById('progtxt');
+  if(wrap){ wrap.hidden=false; if(fill) fill.style.width='0%'; }
+  const o=gather(); WIN=windowAnalysis(o);
+  const t0=performance.now();
+  runModel(o, WIN,
+    p=>{ if(fill) fill.style.width=(p*100).toFixed(1)+'%';
+         if(txt) txt.textContent=`Sampling iteration ${Math.round(p*o.iters).toLocaleString()} of ${o.iters.toLocaleString()}`; },
+    res=>{
+      RESULT=res; RUNNING=false;
+      const ms=Math.round(performance.now()-t0);
+      if(fill) fill.style.width='100%';
+      if(txt) txt.textContent=`Completed ${res.n.toLocaleString()} iterations in ${ms} ms`;
+      if(btn){ btn.disabled=false; btn.textContent=lbl; }
+      const s=document.getElementById('runstate');
+      if(s) s.textContent=`Mean annual risk ${sci(res.meanRisk)} \u00b7 median ${sci(res.median)} \u00b7 95th ${sci(res.p95)}`;
+      setTimeout(()=>{ if(wrap) wrap.hidden=true; },2200);
+      toast(`Simulation complete. Mean annual risk ${sci(res.meanRisk)}.`,'results');
+      const page=(location.hash||'#home').slice(1);
+      if(page==='home') route();
+    });
+}
 
 document.addEventListener('change',e=>{
   const k=e.target.dataset&&e.target.dataset.k; if(!k) return;
@@ -1686,4 +1953,5 @@ let rz; window.addEventListener('resize',()=>{ clearTimeout(rz); rz=setTimeout((
   const id=(location.hash||'#home').slice(1);
   if(V[id]&&V[id].after){ try{V[id].after();}catch(e){} } },180); });
 
+['railmark','topmark'].forEach(id=>{const el=document.getElementById(id); if(el) el.innerHTML=logoMark(34);});
 buildNav(); route();

@@ -55,8 +55,8 @@ code,.mono{font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
   overflow-y:auto;z-index:40;padding-block:18px 24px;
   padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:14px}
 #rail .brand{display:flex;align-items:center;gap:10px}
-#rail .brand .mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(145deg,var(--brand-2),var(--brand));
-  display:grid;place-items:center;color:#042;font-weight:700;font-size:11.5px;flex:0 0 auto}
+#rail .brand .mark{width:34px;height:34px;flex:0 0 auto;line-height:0}
+#rail .brand .mark svg,#topbar .mark svg{display:block;width:100%;height:100%}
 #rail .brand b{font-family:var(--serif);font-size:16.5px;color:#fff;display:block;line-height:1.1}
 #rail .brand span{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#7fb3b6}
 #rail nav{margin-top:16px;display:flex;flex-direction:column;gap:1px}
@@ -67,8 +67,8 @@ code,.mono{font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
 #rail a.nav.on{background:rgba(63,202,184,.15);color:#fff;border-left-color:var(--brand-2);font-weight:500}
 #rail a.nav .dot{width:4.5px;height:4.5px;border-radius:50%;background:#406c7f;flex:0 0 auto}
 #rail a.nav.on .dot{background:var(--brand-2)}
-#rail .railfoot{margin-top:20px;padding-top:13px;border-top:1px solid rgba(255,255,255,.1);font-size:11px;color:#6f93a3;line-height:1.5}
-#rail .logochip{background:#fff;border-radius:8px;padding:9px 11px;margin-top:12px;display:grid;gap:9px;justify-items:start}
+#rail .railfoot{margin-top:20px;padding-top:13px;border-top:1px solid rgba(255,255,255,.1)}
+#rail .logochip{background:#fff;border-radius:8px;padding:9px 11px;display:grid;gap:9px;justify-items:start}
 #rail .logochip img{display:block;height:22px;width:auto}
 
 #main{flex:1 1 auto;min-width:0}
@@ -81,7 +81,7 @@ code,.mono{font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
   #topbar{display:flex;align-items:center;gap:10px;position:sticky;top:env(safe-area-inset-top,0px);z-index:50;
     background:var(--navy);color:#fff;padding-block:10px;
     padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-  #topbar .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(145deg,var(--brand-2),var(--brand));display:grid;place-items:center;color:#042;font-weight:700;font-size:11px}
+  #topbar .mark{width:30px;height:30px;flex:0 0 auto;line-height:0}
   #topbar b{font-family:var(--serif);font-size:15px}
   #topbar button{margin-left:auto;background:rgba(255,255,255,.13);border:0;color:#fff;border-radius:7px;padding:7px 11px;font:inherit;font-size:13px}
   #mobnav{background:var(--navy-2);padding-block:8px 14px;
@@ -153,19 +153,99 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
 :root[data-theme="dark"] .src.cso{color:#7fc2e0}
 
 /* hero */
-.hero{background:var(--navy);border-radius:14px;overflow:hidden;display:grid;grid-template-columns:1.3fr .8fr;color:#dbeaf0}
-.hero .ht{padding:32px 30px}
-.hero h1{color:#fff;font-size:31px;line-height:1.16;margin:8px 0 12px;max-width:26ch}
+.hero{background:var(--navy);border-radius:14px;overflow:hidden;display:grid;grid-template-columns:1.25fr .85fr;color:#dbeaf0;
+  position:relative}
+.hero::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(900px 300px at 8% 0%,rgba(63,202,184,.16),transparent 70%)}
+.hero .ht{padding:38px 32px;position:relative}
+.brandblock{display:flex;align-items:center;gap:16px}
+.brandblock .logomark{flex:0 0 auto;filter:drop-shadow(0 6px 18px rgba(23,163,148,.35));
+  animation:logoIn .7s cubic-bezier(.2,.8,.3,1) both}
+@keyframes logoIn{from{opacity:0;transform:translateY(8px) scale(.9)}to{opacity:1;transform:none}}
+.hero h1{color:#fff;font-size:36px;line-height:1.05;margin:0;letter-spacing:-.025em}
+.hero .sub{color:#9ec6cf;font-size:14px;margin-top:5px;max-width:42ch;line-height:1.45}
+.hero .projline{color:#7fb3b6;font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;
+  font-weight:600;margin-top:20px;padding-top:14px;border-top:1px solid rgba(255,255,255,.13)}
 .hero p{color:#a9c6d3;max-width:52ch;font-size:14.5px}
-.hero .herobtns{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
-.hero .hi{position:relative;min-height:260px;background:#07192a}
-.hero .hi img{width:100%;height:100%;object-fit:cover;display:block}
+.hero .herobtns{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.hero .hi{position:relative;display:grid;place-items:center;padding:20px 20px 20px 0;min-height:340px}
+.hero .hi img{position:static;max-height:330px;max-width:100%;width:auto;height:auto;
+  object-fit:contain;display:block;border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.45)}
+.hero .hi::after{display:none}
 .hero .hi::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--navy) 0%,rgba(9,35,52,.2) 48%,transparent 100%)}
 .hero .tagrow{display:flex;flex-wrap:wrap;gap:7px;margin-top:18px}
 .hero .tagrow span{font-size:11px;color:#9ec6cf;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:3px 10px}
 @media (max-width:780px){.hero{grid-template-columns:1fr}.hero .hi{min-height:150px;order:-1}
   .hero .hi::after{background:linear-gradient(0deg,var(--navy) 0%,transparent 62%)}
-  .hero .ht{padding:22px 18px}.hero h1{font-size:25px}}
+  .hero .ht{padding:24px 18px}.hero h1{font-size:27px}.brandblock{gap:12px}}
+
+/* ticker */
+.ticker{overflow:hidden;background:var(--navy);border-radius:10px;margin-top:12px;
+  padding:9px 0;position:relative;mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent)}
+.tk-track{display:flex;gap:0;width:max-content;animation:scrollx 46s linear infinite}
+.ticker:hover .tk-track{animation-play-state:paused}
+.tk-i{display:inline-flex;align-items:baseline;gap:8px;padding:0 26px;white-space:nowrap;
+  border-right:1px solid rgba(255,255,255,.1)}
+.tk-i em{font-style:normal;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6f93a3;font-weight:600}
+.tk-i b{font-size:13px;color:#d6e8ee;font-variant-numeric:tabular-nums}
+@keyframes scrollx{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.tk-track{animation:none}}
+
+/* Ireland cartogram */
+.iemap{width:100%;max-width:400px;height:auto;display:block;margin:0 auto}
+.iemap .hx polygon{transition:fill-opacity .2s}
+.iemap .hx:hover polygon{fill-opacity:.95}
+.iemap .hx-a{font:700 11px Inter,sans-serif;fill:#fff;text-anchor:middle;pointer-events:none}
+.iemap .hx-v{font:600 9px Inter,sans-serif;fill:rgba(255,255,255,.88);text-anchor:middle;pointer-events:none}
+.maplegend{display:flex;gap:13px;flex-wrap:wrap;font-size:11px;color:var(--muted);
+  justify-content:center;margin-top:10px}
+.maplegend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.maplegend .sel{color:var(--ink-2)}
+.repmap{display:grid;gap:16px;grid-template-columns:minmax(220px,300px) 1fr;align-items:start}
+@media (max-width:700px){.repmap{grid-template-columns:1fr}}
+
+/* entrance */
+.reveal{animation:rise .55s cubic-bezier(.2,.8,.3,1) both}
+.reveal:nth-of-type(2){animation-delay:.06s}
+.reveal:nth-of-type(3){animation-delay:.12s}
+.reveal:nth-of-type(4){animation-delay:.18s}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.reveal,.brandblock .logomark{animation:none}}
+
+/* progress */
+.progwrap{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:13px 16px;margin-top:10px;box-shadow:var(--shadow)}
+.progbar{height:7px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.progfill{height:100%;width:0;border-radius:999px;
+  background:linear-gradient(90deg,var(--brand),var(--brand-2));transition:width .12s linear}
+.progtxt{font-size:12px;color:var(--muted);margin-top:7px;font-variant-numeric:tabular-nums}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,24px);z-index:200;
+  display:flex;align-items:center;gap:12px;background:var(--navy);color:#eaf4f7;
+  border-radius:12px;padding:12px 14px;box-shadow:0 12px 36px rgba(0,0,0,.3);
+  opacity:0;transition:opacity .3s,transform .3s;max-width:min(520px,calc(100vw - 32px))}
+.toast.in{opacity:1;transform:translate(-50%,0)}
+.toast .tk{width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;
+  display:grid;place-items:center;font-size:13px;flex:0 0 auto}
+.toast b{font-weight:600;font-size:13.5px}
+.toast .tx{background:none;border:0;color:#8fb0bd;font-size:19px;cursor:pointer;line-height:1;padding:0 2px}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+
+/* stepper */
+.stepnav{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.stepnav .stepcount{font-size:12px;color:var(--muted);font-weight:600;margin:0 auto}
+.stepnav button{font-size:13px}
+
+/* site footer */
+.sitefoot{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;
+  margin-top:34px;padding-top:18px;border-top:1px solid var(--line)}
+.sf-dev{font-size:13px;color:var(--ink-2)}
+.sf-note{font-size:11.5px;color:var(--faint);margin-top:3px}
+.sf-r{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.sf-r a{display:block;border-radius:6px}
+.sf-r img{height:40px;width:auto;opacity:.9;transition:opacity .2s}
+.sf-r a:hover img{opacity:1}
 
 /* status bar */
 .statusbar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:var(--surface);
@@ -255,12 +335,11 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
 <div id="shell">
   <aside id="rail">
     <div class="brand">
-      <div class="mark">bTB</div>
+      <div class="mark" id="railmark"></div>
       <div><b>bTB-RISK Studio</b><span>Teagasc &middot; DAFM PSSRC 8.1</span></div>
     </div>
     <nav id="navlinks"></nav>
     <div class="railfoot">
-      Research decision-support tool. Not a regulatory decision tool.
       <div class="logochip">
         <img src="assets/teagasc.png" alt="Teagasc">
         <img src="assets/dafm.png" alt="Department of Agriculture, Food and the Marine">
@@ -269,7 +348,7 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
   </aside>
   <div id="main">
     <div id="topbar">
-      <div class="mark">bTB</div><b>bTB-RISK Studio</b>
+      <div class="mark" id="topmark"></div><b>bTB-RISK Studio</b>
       <button id="mobtoggle" aria-expanded="false">Sections</button>
     </div>
     <div id="mobnav"></div>
