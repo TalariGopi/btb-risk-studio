@@ -4,15 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="Farm-to-fork quantitative microbial risk assessment decision-support tool for Mycobacterium bovis in unpasteurised cheese. Teagasc Moorepark, DAFM PSSRC Topic 8.1.">
-<style>:root{color-scheme:light}html,body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>bTB-RISK Studio</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap">
 <style>
+html,body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
 /* Layout: fixed evidence rail on the left, scrolling work surface on the right;
    collapses to a stacked page with a sticky section bar under 960px. */
 :root{
-  --ink:#0b1f2e; --ink-2:#1d3a4f; --muted:#5a7183; --faint:#8da2b0;
+  --ink:#0b1f2e; --ink-2:#1d3a4f; --muted:#5a7183; --faint:#67808f;
   --bg:#f4f7f8; --surface:#ffffff; --surface-2:#eef2f4; --line:#d8e0e5;
   --brand:#0e6b63; --brand-2:#17a394; --brand-soft:#e2f1ef;
   --navy:#092334; --navy-2:#13405c;
@@ -171,7 +173,6 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
 .hero .hi{position:relative;display:grid;place-items:center;padding:20px 20px 20px 0;min-height:340px}
 .hero .hi img{position:static;max-height:330px;max-width:100%;width:auto;height:auto;
   object-fit:contain;display:block;border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.45)}
-.hero .hi::after{display:none}
 .hero .hi::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--navy) 0%,rgba(9,35,52,.2) 48%,transparent 100%)}
 .hero .tagrow{display:flex;flex-wrap:wrap;gap:7px;margin-top:18px}
 .hero .tagrow span{font-size:11px;color:#9ec6cf;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:3px 10px}
@@ -334,6 +335,38 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
 .logos{display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin:16px 0}
 .logos img{height:44px;width:auto;opacity:.95}
 
+/* @RISK-style distribution panels */
+.rp-host{min-width:0}
+.rp{display:block;width:100%;height:auto;overflow:visible}
+.rp text{font-family:var(--sans)}
+.rp .rp-plot{fill:var(--surface);stroke:none}
+.rp .rp-grid{stroke:var(--line);stroke-width:1;stroke-dasharray:2 4}
+.rp .rp-axis{stroke:var(--ink-2);stroke-width:1.1;fill:none}
+.rp .rp-bar{fill:var(--brand);fill-opacity:.85}
+.rp .rp-bar.tail{fill:var(--mod);fill-opacity:.95}
+.rp .rp-zone{fill:var(--mod);fill-opacity:.1;stroke:none}
+.rp .rp-fit{fill:none;stroke:var(--high);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.rp .rp-curve{fill:none;stroke:var(--brand);stroke-width:2.2;stroke-linejoin:round}
+.rp .rp-delim{stroke:var(--ink);stroke-width:1.3;stroke-dasharray:5 4}
+.rp .rp-ref{stroke:var(--high);stroke-width:1.5;stroke-dasharray:6 4}
+.rp .rp-lead{stroke:var(--faint);stroke-width:1;stroke-dasharray:2 3}
+.rp .rp-pt{fill:var(--brand);fill-opacity:.3;stroke:none}
+.rp .rp-tick{fill:var(--muted);font-size:10.5px}
+.rp .rp-axlab{fill:var(--ink-2);font-size:11.5px}
+.rp .rp-title{fill:var(--ink);font-size:13.5px;font-weight:700}
+.rp .rp-sub{fill:var(--muted);font-size:11px}
+.rp .rp-pct{fill:var(--ink);font-size:11px;font-weight:700}
+.rp .rp-note{fill:var(--high);font-size:10.5px;font-weight:700}
+.rp .rp-box{fill:var(--surface-2);stroke:var(--line);stroke-width:1}
+.rp .rp-hd{fill:var(--ink);font-size:10px;font-weight:700;letter-spacing:.08em}
+.rp .rp-k{fill:var(--muted);font-size:10.5px}
+.rp .rp-v{fill:var(--ink);font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.rp .rp-bar-pos{fill:var(--brand)}
+.rp .rp-bar-neg{fill:var(--mod)}
+.rp .rp-bar-top{fill:var(--high)}
+.rp .rp-name{fill:var(--ink-2);font-size:11.5px}
+.rp-empty{font-size:12.5px;color:var(--muted);padding:14px 2px}
+
 /* print */
 @media print{
   @page{margin:14mm}
@@ -356,12 +389,27 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
   .kv dt{color:#333}
   a{color:#000;text-decoration:none}
   .rephead{border-bottom:2px solid #000}
+  .chartbox{border:1px solid #999;box-shadow:none;background:#fff;page-break-inside:avoid;padding:10px}
+  .chartbox h3,.chartbox .cap{color:#000}
+  .rp{page-break-inside:avoid}
+  .rp .rp-plot{fill:#fff}
+  .rp .rp-grid{stroke:#ccc}
+  .rp .rp-axis,.rp .rp-delim{stroke:#000}
+  .rp .rp-bar{fill:#9fb6c2;fill-opacity:1}
+  .rp .rp-bar.tail{fill:#4e6b7a;fill-opacity:1}
+  .rp .rp-zone{fill:#000;fill-opacity:.06}
+  .rp .rp-fit,.rp .rp-curve,.rp .rp-ref{stroke:#000}
+  .rp .rp-pt{fill:#33505f;fill-opacity:.35}
+  .rp .rp-lead{stroke:#666}
+  .rp .rp-tick,.rp .rp-k,.rp .rp-sub{fill:#333}
+  .rp .rp-axlab,.rp .rp-title,.rp .rp-v,.rp .rp-pct,.rp .rp-note,.rp .rp-hd,.rp .rp-name{fill:#000}
+  .rp .rp-box{fill:#f2f2f2;stroke:#999}
+  .rp .rp-bar-pos{fill:#7f99a6} .rp .rp-bar-neg{fill:#b9c6cd} .rp .rp-bar-top{fill:#3d5a69}
 }
 </style>
-
-
 </head>
 <body>
+
 <div id="shell">
   <aside id="rail">
     <div class="brand">
@@ -390,6 +438,5 @@ ul.refs,ol.refs{font-size:13px;color:var(--ink-2);padding-left:20px;max-width:78
 <script src="model.js"></script>
 <script src="params.js"></script>
 <script src="app.js"></script>
-
 </body>
 </html>

@@ -30,9 +30,9 @@ const P = {
   maturationFixed:{v:153,  cls:'usr', g:'cheese', label:'Maturation age at sale (days)', step:1,
                   dist:'Fixed, or Pert(30, 120, 365) when set to 0', src:'DAFM case input'},
   serving:       {v:27.09, cls:'lit', g:'cheese', label:'Serving size (g)', step:0.01,
-                  dist:'Normal(27.09, 20.99), truncated at 1 g', src:'IUNA National Adult Nutrition Survey 2021'},
+                  dist:'Lognormal(mean 27.09, SD 20.99)', src:'IUNA National Adult Nutrition Survey 2021'},
   servingSd:     {v:20.99, cls:'lit', g:'cheese', label:'Serving size, standard deviation (g)', step:0.01,
-                  dist:'Normal(27.09, 20.99)', src:'IUNA 2021'},
+                  dist:'Lognormal, moment matched', src:'IUNA 2021'},
   servingsFixed: {v:93.6,  cls:'lit', g:'cheese', label:'Annual servings per consumer', step:0.1,
                   dist:'Fixed, or Poisson(1.8)/week × 52 when set to 0', src:'IUNA 2021'},
   consumers:     {v:89855, cls:'lit', g:'cheese', label:'Population at risk', step:100,
@@ -56,14 +56,22 @@ const P = {
   yieldMode:     {v:19,    cls:'lit', g:'farm', label:'Milk yield, Pert mode', step:0.1},
   yieldMax:      {v:24,    cls:'lit', g:'farm', label:'Milk yield, Pert maximum', step:0.1},
 
-  shedPosMin:    {v:1e-4,  cls:'lit', g:'shed', label:'Reactor shedding, minimum (CFU/mL)', step:1e-5,
-                  dist:'Pert(1×10⁻⁴, 5×10⁻³, 5×10⁻²)', src:'Collins systematic review and meta-analysis 2021'},
-  shedPosMode:   {v:5e-3,  cls:'lit', g:'shed', label:'Reactor shedding, mode', step:1e-4},
-  shedPosMax:    {v:5e-2,  cls:'lit', g:'shed', label:'Reactor shedding, maximum', step:1e-3},
-  shedNegMin:    {v:0,     cls:'lit', g:'shed', label:'Non-reactor shedding, minimum (CFU/mL)', step:1e-6,
-                  dist:'Pert(0, 1×10⁻⁴, 1×10⁻³)', src:'Nuñez-Garcia et al. 2017; expert elicitation'},
-  shedNegMode:   {v:1e-4,  cls:'lit', g:'shed', label:'Non-reactor shedding, mode', step:1e-5},
-  shedNegMax:    {v:1e-3,  cls:'lit', g:'shed', label:'Non-reactor shedding, maximum', step:1e-4},
+  /* The shedding terms are composite per-animal load terms, not concentrations in
+     an individual animal's milk. In the bulk tank equation each term is multiplied
+     by the number of infected animals, divided by the herd's daily milk volume in
+     litres and multiplied by 1000, so it carries the units of a load contributed to
+     the bulk tank by one animal over a milking day. Values are unchanged; only the
+     labels, distribution text and source text are corrected. */
+  shedPosMin:    {v:1e-4,  cls:'lit', g:'shed', label:'Reactor load term, minimum (CFU per animal per milking day)', step:1e-5,
+                  dist:'Pert(1×10⁻⁴, 5×10⁻³, 5×10⁻²), elicited composite per-animal load',
+                  src:'Elicited composite term anchored on Collins systematic review and meta-analysis 2021. No measured estimate exists for the quantity of M. bovis shed in the milk of tuberculin-positive cattle, so this term combines shedding frequency and shedding level into a single per-animal daily load'},
+  shedPosMode:   {v:5e-3,  cls:'lit', g:'shed', label:'Reactor load term, mode', step:1e-4},
+  shedPosMax:    {v:5e-2,  cls:'lit', g:'shed', label:'Reactor load term, maximum', step:1e-3},
+  shedNegMin:    {v:0,     cls:'lit', g:'shed', label:'Non-reactor load term, minimum (CFU per animal per milking day)', step:1e-6,
+                  dist:'Pert(0, 1×10⁻⁴, 1×10⁻³), elicited composite per-animal load',
+                  src:'Elicited composite term informed by Nuñez-Garcia et al. 2017. No measured estimate exists for milk shedding by test-negative infected cattle'},
+  shedNegMode:   {v:1e-4,  cls:'lit', g:'shed', label:'Non-reactor load term, mode', step:1e-5},
+  shedNegMax:    {v:1e-3,  cls:'lit', g:'shed', label:'Non-reactor load term, maximum', step:1e-4},
 
   /* --- processing distributions --- */
   curdMin:       {v:0.75,  cls:'lit', g:'proc', label:'Curd retention, minimum', step:0.01,
@@ -122,8 +130,8 @@ const P = {
   bcgA:          {v:75,    cls:'lit', g:'dr', label:'BCG protection factor, Beta α', step:1,
                   dist:'Beta(75, 25), mean 0.75', src:'Irish neonatal BCG programme, historical cohorts'},
   bcgB:          {v:25,    cls:'lit', g:'dr', label:'BCG protection factor, Beta β', step:1},
-  daly:          {v:15,    cls:'lit', g:'dr', label:'DALYs per case', step:0.1,
-                  dist:'Triangular(10, 15, 20), mean 15', src:'Global Burden of Disease tuberculosis estimates'},
+  daly:          {v:5.0,   cls:'lit', g:'dr', label:'DALYs per case', step:0.1,
+                  dist:'Triangular(3.5, 5.0, 6.8), mean 5.0', src:'Kirk et al. 2015: 607,775 DALYs across 121,268 M. bovis illnesses'},
 
   /* --- scenario linkage --- */
   herdFactor:    {v:1.0,   cls:'usr', g:'link', label:'Farm size factor', step:0.01,

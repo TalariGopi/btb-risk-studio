@@ -155,7 +155,9 @@ function prepareRun(o, win){
         uTret=lhs(n), uTdom=lhs(n), uStoreT=lhs(n);
 
   const risk=new Float64Array(n), dose=new Float64Array(n), btm=new Float64Array(n),
-        lrArr=new Float64Array(n), cheeseConc=new Float64Array(n), cases=new Float64Array(n);
+        lrArr=new Float64Array(n), cheeseConc=new Float64Array(n), cases=new Float64Array(n),
+        curdArr=new Float64Array(n), survArr=new Float64Array(n), ccArr=new Float64Array(n),
+        servArr=new Float64Array(n), reffArr=new Float64Array(n);
   const X={ r:new Float64Array(n), ccC:new Float64Array(n), ccP:new Float64Array(n),
             pHerd:new Float64Array(n), serving:new Float64Array(n), shedPos:new Float64Array(n),
             dVal:new Float64Array(n), matur:new Float64Array(n), susc:new Float64Array(n),
@@ -165,14 +167,14 @@ function prepareRun(o, win){
 
   return {o,n,W,prevMult,shedMult,ruf,seasonMult,countyMult,lhsU:{uR,uShedPos,uShedNeg,uYield,
     uServing,uDval,uMat,uCcP,uCcC,uCurd,uConc,uTret,uTdom,uStoreT},
-    arr:{risk,dose,btm,lrArr,cheeseConc,cases},X,pasteurised};
+    arr:{risk,dose,btm,lrArr,cheeseConc,cases,curdArr,survArr,ccArr,servArr,reffArr},X,pasteurised};
 }
 
 function runChunk(ctx, start, end){
   const o=ctx.o, X=ctx.X, pasteurised=ctx.pasteurised;
   const prevMult=ctx.prevMult, shedMult=ctx.shedMult, herdFactor=o.herdFactor, procFactor=o.procFactor;
   const {uServing,uDval,uMat,uStoreT,uR}=ctx.lhsU;
-  const {risk,dose,btm,lrArr,cheeseConc,cases}=ctx.arr;
+  const {risk,dose,btm,lrArr,cheeseConc,cases,curdArr,survArr,ccArr,servArr,reffArr}=ctx.arr;
   for(let i=start;i<end;i++){
     /* --- farm module --- */
     const nHerd  = o.herdSizeFixed>0 ? o.herdSizeFixed : rpert(o.nHerdMin,o.nHerdMode,o.nHerdMax);
@@ -214,7 +216,7 @@ function runChunk(ctx, start, end){
     const finalC = (initial*surv + ccAdd) * procFactor;            /* CFU/g */
 
     /* --- exposure --- */
-    const serving = Math.max(iNorm(uServing[i],o.serving,o.servingSd),1);
+    const serving = iLognormMS(uServing[i], o.serving, o.servingSd);
     const d = finalC*serving;
     const events = o.servingsFixed>0 ? o.servingsFixed : rpois(o.freqWeek)*52;
 
@@ -230,7 +232,8 @@ function runChunk(ctx, start, end){
     const pop = o.consumers*o.pConsume;
 
     risk[i]=pYear; dose[i]=d; btm[i]=bulk; lrArr[i]=lrTotal; cheeseConc[i]=finalC;
-    cases[i]=pYear*pop;
+    cases[i]=pYear*pop; curdArr[i]=initial; survArr[i]=initial*surv; ccArr[i]=ccAdd;
+    servArr[i]=pServ; reffArr[i]=rEff;
     X.r[i]=r; X.ccC[i]=cCross; X.ccP[i]=pCross; X.pHerd[i]=pHerd; X.serving[i]=serving;
     X.shedPos[i]=shedPos; X.dVal[i]=dVal; X.matur[i]=matur; X.susc[i]=su; X.bcg[i]=bc;
     X.pWithin[i]=pWith; X.nHerd[i]=nHerd;
@@ -240,7 +243,7 @@ function runChunk(ctx, start, end){
 
 function finaliseRun(ctx){
   const o=ctx.o, n=ctx.n, X=ctx.X;
-  const {risk,dose,btm,lrArr,cases}=ctx.arr;
+  const {risk,dose,btm,lrArr,cases,curdArr,survArr,ccArr,servArr,reffArr}=ctx.arr;
   const cheeseConc=ctx.arr.cheeseConc;
   const mean=a=>{let s=0;for(let i=0;i<a.length;i++)s+=a[i];return s/a.length;};
   const sortedRisk=Float64Array.from(risk).sort();
@@ -251,7 +254,9 @@ function finaliseRun(ctx){
   const events=o.servingsFixed>0?o.servingsFixed:o.freqWeek*52;
 
   return {
-    n, risk, dose, btm, X, prevMult:ctx.prevMult, shedMult:ctx.shedMult, ruf:ctx.ruf,
+    n, risk, dose, btm, X, curd:curdArr, survived:survArr, cc:ccArr, lrAll:lrArr,
+    pServ:servArr, reff:reffArr, conc:cheeseConc,
+    prevMult:ctx.prevMult, shedMult:ctx.shedMult, ruf:ctx.ruf,
     seasonMult:ctx.seasonMult, countyMult:ctx.countyMult, window:ctx.W,
     meanRisk, sd,
     median:percentile(sortedRisk,0.5), p05:percentile(sortedRisk,0.05),
@@ -273,7 +278,7 @@ function finaliseRun(ctx){
 const SRC_NAMES = {
   r:'Infectivity parameter r', ccC:'Cross-contamination level (CFU/g)',
   ccP:'Cross-contamination probability', pHerd:'Herd-level incidence',
-  serving:'Serving size', shedPos:'Shedding rate, reactors',
+  serving:'Serving size', shedPos:'Reactor load term (CFU/animal/day)',
   dVal:'D-value', matur:'Maturation age', susc:'Host susceptibility',
   bcg:'BCG protection factor', pWithin:'Within-herd prevalence', nHerd:'Herd size'
 };

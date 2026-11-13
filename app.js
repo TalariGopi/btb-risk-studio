@@ -176,28 +176,8 @@ function chartBarsLog(cv,rows,opts){
   c.strokeStyle=css('--line'); c.lineWidth=1; c.beginPath(); c.moveTo(L,T); c.lineTo(L,T+H); c.stroke();
 }
 
-function chartTornado(cv,terms){
-  const rows=terms.slice(0,9);
-  const h=42+rows.length*29, s=setup(cv,h); if(!s) return; const {c,w}=s;
-  const L=Math.min(196,w*0.42),T=8,W=w-L-54,H=h-T-30;
-  const mx=Math.max(Math.max.apply(null,rows.map(r=>Math.abs(r.src))),0.1)*1.1;
-  const x=v=>L+Math.abs(v)/mx*W;
-  c.strokeStyle=css('--line'); c.setLineDash([2,4]);
-  for(let f=0.2;f<=1.001;f+=0.2){c.beginPath();c.moveTo(L+f*W/1.1*mx/mx,T);c.lineTo(L+f*W,T+H);c.stroke();}
-  c.setLineDash([]);
-  rows.forEach((r,i)=>{
-    const y=T+(i+0.5)*(H/rows.length);
-    c.fillStyle=css('--ink-2'); c.font='12px Inter,sans-serif'; c.textAlign='right';
-    c.fillText(r.name.length>32?r.name.slice(0,31)+'…':r.name,L-10,y+4);
-    c.fillStyle=i===0?css('--high'):(r.src>=0?css('--brand'):css('--mod'));
-    c.fillRect(L,y-8,Math.max(x(r.src)-L,2),16);
-    c.fillStyle=css('--muted'); c.font='600 11px Inter,sans-serif'; c.textAlign='left';
-    c.fillText(r.src.toFixed(3),x(r.src)+7,y+4);
-  });
-  c.strokeStyle=css('--line'); c.beginPath(); c.moveTo(L,T); c.lineTo(L,T+H); c.stroke();
-  c.fillStyle=css('--muted'); c.font='11px Inter,sans-serif'; c.textAlign='center';
-  c.fillText('absolute standardised regression coefficient',L+W/2,T+H+20);
-}
+/* chartTornado (canvas, unsigned bars, slanted gridlines) was replaced by
+   tornadoPanelSVG below, which is signed, scales to the viewport and prints. */
 
 function chartDecay(cv,o,r){
   const s=setup(cv,270); if(!s) return; const {c,w,h}=s;
@@ -297,6 +277,431 @@ function chartWaterfall(cv,o,r){
   for(let e=Math.ceil(yBot);e<=yTop;e++) c.fillText('10'+sup(e),L-6,y(e)+4);
   c.textAlign='center'; c.fillText('concentration per gram of cheese (per mL for bulk tank)',L+W/2,T+H+36);
 }
+
+/* ============== @RISK-style statistical output panels, inline SVG ==============
+   One reusable builder per panel kind. Every panel carries a relative-frequency
+   histogram, delimiter lines at the 5th and 95th percentiles with the three
+   region probabilities, a fitted density scaled to the bin width, and a
+   descriptive-statistics box. Colours come from CSS classes, so light mode,
+   dark mode and the print stylesheet each resolve them in turn. */
+
+function descStats(a){
+  const n=a.length; if(!n) return null;
+  let mn=Infinity,mx=-Infinity,s=0;
+  for(let i=0;i<n;i++){const v=a[i]; if(v<mn)mn=v; if(v>mx)mx=v; s+=v;}
+  const mean=s/n;
+  let m2=0,m3=0,m4=0;
+  for(let i=0;i<n;i++){const d=a[i]-mean,d2=d*d; m2+=d2; m3+=d2*d; m4+=d2*d2;}
+  const variance=n>1?m2/(n-1):0, sd=Math.sqrt(variance), m2n=m2/n;
+  const sorted=Float64Array.from(a).sort();
+  return {n, min:mn, max:mx, mean, sd, var:variance,
+    skew:m2n>0?(m3/n)/Math.pow(m2n,1.5):0,
+    kurt:m2n>0?(m4/n)/(m2n*m2n):0,
+    median:percentile(sorted,0.5), p05:percentile(sorted,0.05), p95:percentile(sorted,0.95),
+    cv:mean!==0?sd/Math.abs(mean):NaN, sorted:sorted};
+}
+
+/* compact fixed-or-scientific number for the statistics box */
+function rpFmt(v){
+  if(v===null||v===undefined||!isFinite(v)) return '—';
+  if(v===0) return '0';
+  const m=Math.abs(v);
+  if(m>=1e-3&&m<1e5){
+    let s=Number(v).toPrecision(4);
+    if(s.indexOf('.')>=0) s=s.replace(/0+$/,'').replace(/\.$/,'');
+    return s;
+  }
+  return sci(v,3);
+}
+
+const RP_ROWS=[['Minimum','min'],['Maximum','max'],['Mean','mean'],['Std deviation','sd'],
+  ['Variance','var'],['Skewness','skew'],['Kurtosis','kurt'],['Median','median'],
+  ['5% perc','p05'],['95% perc','p95'],['Coeff of var','cv']];
+
+const rpPdf=(x,mu,sg)=>sg>0?Math.exp(-0.5*((x-mu)/sg)*((x-mu)/sg))/(sg*Math.sqrt(2*Math.PI)):0;
+
+function rpNice(lo,hi,target){
+  const span=hi-lo; if(!(span>0)) return [lo];
+  const raw=span/(target||5), mag=Math.pow(10,Math.floor(Math.log10(raw))), norm=raw/mag;
+  const step=(norm<1.5?1:norm<3?2:norm<7?5:10)*mag;
+  const out=[];
+  for(let v=Math.ceil(lo/step-1e-9)*step; v<=hi+step*1e-9; v+=step)
+    out.push(Math.abs(v)<step*1e-9?0:v);
+  return out;
+}
+function rpTicks(lo,hi,log,maxN){
+  if(log){
+    const out=[]; let step=1;
+    while((hi-lo)/step>(maxN||8)) step++;
+    for(let e=Math.ceil(lo/step-1e-9)*step; e<=hi+1e-9; e+=step)
+      out.push({v:e, t:'10'+sup(Math.round(e))});
+    return out;
+  }
+  return rpNice(lo,hi,maxN||6).map(v=>({v, t:rpFmt(v)}));
+}
+const rpPc=v=>{const p=v*100; return (p<1?p.toFixed(1):p.toFixed(0))+'%';};
+
+/* axis caption, wrapped onto a second line when the plot is too narrow for it */
+function rpAxisLabel(text,cx,y,maxW){
+  text=String(text||'');
+  const max=Math.max(10,Math.floor(maxW/5.9));
+  if(text.length<=max)
+    return {svg:`<text class="rp-axlab" x="${cx}" y="${y}" text-anchor="middle">${esc(text)}</text>`, lines:1};
+  let cut=text.lastIndexOf(' ',max); if(cut<max*0.45) cut=max;
+  return {svg:`<text class="rp-axlab" x="${cx}" y="${y}" text-anchor="middle">${esc(text.slice(0,cut))}</text>
+    <text class="rp-axlab" x="${cx}" y="${y+14}" text-anchor="middle">${esc(text.slice(cut).trim())}</text>`, lines:2};
+}
+
+let RP_UID=0;
+const rpId=()=>'rp'+(++RP_UID);
+
+/* statistics box, returns {svg, h} */
+function rpStatsBox(x,y,w,st,heading,cols){
+  const pad=10, rowH=16, nCol=cols||1;
+  const per=Math.ceil(RP_ROWS.length/nCol), colW=(w-pad*2)/nCol;
+  const h=22+per*rowH+12;
+  let g=`<rect class="rp-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="7"/>
+    <text class="rp-hd" x="${x+pad}" y="${y+16}">${esc(heading)}</text>`;
+  RP_ROWS.forEach((row,i)=>{
+    const ci=Math.floor(i/per), ri=i%per;
+    const cx=x+pad+ci*colW, ty=y+34+ri*rowH;
+    g+=`<text class="rp-k" x="${cx}" y="${ty}">${row[0]}</text>
+      <text class="rp-v" x="${cx+colW-(nCol>1?12:0)}" y="${ty}" text-anchor="end">${rpFmt(st[row[1]])}</text>`;
+  });
+  return {svg:g, h:h};
+}
+
+/* ---- the main panel: histogram + delimiters + fitted density + stats ---- */
+function distPanelSVG(w,cfg){
+  const log=!!cfg.log, uid=rpId();
+  const src=cfg.data||[], nat=[];
+  for(let i=0;i<src.length;i++) if(isFinite(src[i])) nat.push(src[i]);
+  const st=descStats(nat);
+  const xs=[]; let drop=0;
+  for(let i=0;i<nat.length;i++){
+    const v=nat[i];
+    if(log){ if(v>0) xs.push(Math.log10(v)); else drop++; } else xs.push(v);
+  }
+  if(!st||xs.length<2) return '<div class="rp-empty">No simulated values are available for this '+
+    'output yet. Run a simulation to populate the panel.</div>';
+
+  const narrow=w<680;
+  const boxW=narrow?Math.min(w,540):Math.min(224,Math.max(176,Math.round(w*0.28)));
+  const plotW=narrow?w:w-boxW-16;
+  const L=46,R=16,T=50,PH=narrow?192:226;
+  const IW=Math.max(60,plotW-L-R), B=T+PH;
+
+  /* bin range */
+  let lo,hi;
+  if(log){
+    lo=Math.floor(Math.min.apply(null,xs)); hi=Math.ceil(Math.max.apply(null,xs));
+    if(hi-lo<3){ hi=lo+3; }
+  } else {
+    lo=Math.min.apply(null,xs); hi=Math.max.apply(null,xs);
+    const pad=(hi-lo)*0.04||Math.abs(lo)*0.05||1; lo-=pad; hi+=pad;
+  }
+  const nb=narrow?32:50, bw=(hi-lo)/nb, bins=new Array(nb).fill(0);
+  for(let i=0;i<xs.length;i++){
+    let b=Math.floor((xs[i]-lo)/bw); b=Math.min(Math.max(b,0),nb-1); bins[b]++;
+  }
+  const n=xs.length, rel=bins.map(c=>c/n);
+  let mu=0; for(let i=0;i<n;i++) mu+=xs[i]; mu/=n;
+  let sg=0; for(let i=0;i<n;i++){const d=xs[i]-mu; sg+=d*d;} sg=Math.sqrt(sg/(n-1));
+  const fitPeak=cfg.fit===false?0:rpPdf(mu,mu,sg)*bw;
+  const yMax=Math.max(Math.max.apply(null,rel),fitPeak)*1.16||1;
+
+  const x=v=>L+(v-lo)/(hi-lo)*IW, y=v=>B-v/yMax*PH;
+  const plo=cfg.plo===undefined?0.05:cfg.plo, phi=cfg.phi===undefined?0.95:cfg.phi;
+  const q05=log?(st.p05>0?Math.log10(st.p05):lo):st.p05;
+  const q95=log?(st.p95>0?Math.log10(st.p95):lo):st.p95;
+  const xq05=Math.min(Math.max(x(q05),L),L+IW), xq95=Math.min(Math.max(x(q95),L),L+IW);
+
+  let g=`<clipPath id="${uid}c"><rect x="${L}" y="${T-10}" width="${IW}" height="${PH+10}"/></clipPath>
+    <rect class="rp-plot" x="${L}" y="${T}" width="${IW}" height="${PH}"/>
+    <rect class="rp-zone" x="${L}" y="${T}" width="${Math.max(xq05-L,0)}" height="${PH}"/>
+    <rect class="rp-zone" x="${xq95}" y="${T}" width="${Math.max(L+IW-xq95,0)}" height="${PH}"/>`;
+
+  /* y grid and labels */
+  rpNice(0,yMax,4).forEach(v=>{
+    if(v<=0||v>yMax) return;
+    g+=`<line class="rp-grid" x1="${L}" y1="${y(v).toFixed(1)}" x2="${L+IW}" y2="${y(v).toFixed(1)}"/>
+      <text class="rp-tick" x="${L-7}" y="${(y(v)+3.5).toFixed(1)}" text-anchor="end">${rpPc(v)}</text>`;
+  });
+  g+=`<text class="rp-tick" x="${L-7}" y="${B+3.5}" text-anchor="end">0%</text>`;
+
+  /* bars */
+  for(let i=0;i<nb;i++){
+    if(!bins[i]) continue;
+    const c=lo+(i+0.5)*bw, bx=x(lo+i*bw), bx2=x(lo+(i+1)*bw);
+    const tail=(c<q05)||(c>q95);
+    g+=`<rect class="rp-bar${tail?' tail':''}" x="${bx.toFixed(2)}" y="${y(rel[i]).toFixed(2)}"
+      width="${Math.max(bx2-bx-0.6,0.8).toFixed(2)}" height="${(B-y(rel[i])).toFixed(2)}"/>`;
+  }
+
+  /* fitted density, scaled to the bin width */
+  if(cfg.fit!==false&&sg>0){
+    let d='';
+    for(let i=0;i<=160;i++){
+      const xv=lo+(hi-lo)*i/160, yv=rpPdf(xv,mu,sg)*bw;
+      d+=(i?'L':'M')+x(xv).toFixed(2)+' '+y(Math.min(yv,yMax)).toFixed(2)+' ';
+    }
+    g+=`<path class="rp-fit" clip-path="url(#${uid}c)" d="${d}"/>`;
+  }
+
+  /* delimiters and the three region probabilities */
+  g+=`<line class="rp-delim" x1="${xq05.toFixed(1)}" y1="${T-10}" x2="${xq05.toFixed(1)}" y2="${B}"/>
+    <line class="rp-delim" x1="${xq95.toFixed(1)}" y1="${T-10}" x2="${xq95.toFixed(1)}" y2="${B}"/>`;
+  const mid=(xq05+xq95)/2;
+  const clamp=(v)=>Math.min(Math.max(v,L+15),L+IW-15);
+  g+=`<text class="rp-pct" x="${clamp((L+xq05)/2)}" y="${T+14}" text-anchor="middle">${(plo*100).toFixed(1)}%</text>
+    <text class="rp-pct" x="${clamp(mid)}" y="${T+14}" text-anchor="middle">${((phi-plo)*100).toFixed(1)}%</text>
+    <text class="rp-pct" x="${clamp((xq95+L+IW)/2)}" y="${T+14}" text-anchor="middle">${((1-phi)*100).toFixed(1)}%</text>`;
+  if(xq95-xq05>150)
+    g+=`<text class="rp-tick" x="${(xq05+5).toFixed(1)}" y="${T+30}">${esc(cfg.q05Label||sci(st.p05,2))}</text>
+      <text class="rp-tick" x="${(xq95-5).toFixed(1)}" y="${T+30}" text-anchor="end">${esc(cfg.q95Label||sci(st.p95,2))}</text>`;
+
+  /* reference levels */
+  (cfg.refs||[]).forEach((rf,i)=>{
+    const rv=log?Math.log10(rf.v):rf.v;
+    if(rv<lo||rv>hi) return;
+    const px=x(rv);
+    const right=px>L+IW-74;
+    g+=`<line class="rp-ref" x1="${px.toFixed(1)}" y1="${T}" x2="${px.toFixed(1)}" y2="${B}"/>
+      <text class="rp-note" x="${(px+(right?-5:5)).toFixed(1)}" y="${T+50+i*15}"
+        text-anchor="${right?'end':'start'}">${esc(rf.label)}</text>`;
+  });
+
+  /* axes */
+  g+=`<path class="rp-axis" d="M${L} ${T} L${L} ${B} L${L+IW} ${B}"/>`;
+  rpTicks(lo,hi,log,narrow?5:8).forEach(t=>{
+    if(t.v<lo-1e-9||t.v>hi+1e-9) return;
+    g+=`<line class="rp-axis" x1="${x(t.v).toFixed(1)}" y1="${B}" x2="${x(t.v).toFixed(1)}" y2="${B+5}"/>
+      <text class="rp-tick" x="${x(t.v).toFixed(1)}" y="${B+17}" text-anchor="middle">${t.t}</text>`;
+  });
+  const al=rpAxisLabel(cfg.xlabel,L+IW/2,B+34,IW+24);
+  g+=al.svg+`<text class="rp-axlab" transform="translate(13 ${T+PH/2}) rotate(-90)"
+      text-anchor="middle">Relative frequency</text>`;
+
+  /* legend */
+  const lgY=B+50+(al.lines-1)*14;
+  g+=`<line class="rp-fit" x1="${L}" y1="${lgY-4}" x2="${L+20}" y2="${lgY-4}"/>
+    <text class="rp-tick" x="${L+26}" y="${lgY}">${log?'Lognormal':'Normal'} fit, &#956; = ${rpFmt(mu)},
+      &#963; = ${rpFmt(sg)}${log?' (log₁₀ scale)':''}</text>
+    <rect class="rp-bar tail" x="${L}" y="${lgY+8}" width="14" height="9"/>
+    <text class="rp-tick" x="${L+22}" y="${lgY+17}">Tail regions beyond the 5th and 95th percentiles</text>`;
+  let blockH=lgY+26;
+
+  /* title */
+  g=`<text class="rp-title" x="0" y="15">${esc(cfg.title||'')}</text>
+    <text class="rp-sub" x="0" y="33">${esc(st.n.toLocaleString()+' iterations')}${
+      drop?esc(' · '+drop.toLocaleString()+' zero or non-positive values outside the log axis'):''}${
+      cfg.subtitle?esc(' · '+cfg.subtitle):''}</text>`+g;
+
+  /* statistics box */
+  const bx=rpStatsBox(narrow?0:plotW+16, narrow?blockH+10:T, boxW, st,
+    'STATISTICS'+(cfg.units?' — '+cfg.units:''), narrow?2:1);
+  g+=bx.svg;
+  const H=narrow?blockH+10+bx.h:Math.max(blockH,T+bx.h);
+
+  return `<svg class="rp" viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" role="img"
+    aria-label="${esc((cfg.title||'Output')+'. '+(cfg.aria||'Relative-frequency histogram with 5th and 95th percentile delimiters and a fitted density.')
+      +' Mean '+rpFmt(st.mean)+', median '+rpFmt(st.median)+', 5th percentile '+rpFmt(st.p05)
+      +', 95th percentile '+rpFmt(st.p95)+'.')}">${g}</svg>`;
+}
+
+/* ---- ascending cumulative distribution with exceedance annotations ---- */
+function cumPanelSVG(w,cfg){
+  const src=cfg.data||[], nat=[];
+  for(let i=0;i<src.length;i++) if(isFinite(src[i])&&src[i]>0) nat.push(src[i]);
+  const st=descStats(nat);
+  if(!st) return '<div class="rp-empty">No simulated values are available for this output yet.</div>';
+  const sorted=st.sorted, n=sorted.length;
+  const narrow=w<680;
+  const boxW=narrow?Math.min(w,540):Math.min(224,Math.max(176,Math.round(w*0.28)));
+  const plotW=narrow?w:w-boxW-16;
+  const L=50,R=16,T=50,PH=narrow?192:226, IW=Math.max(60,plotW-L-R), B=T+PH;
+  let lo=Math.floor(Math.log10(sorted[0])), hi=Math.ceil(Math.log10(sorted[n-1]));
+  if(hi-lo<3) hi=lo+3;
+  const x=v=>L+(v-lo)/(hi-lo)*IW, y=p=>B-p*PH;
+
+  let g=`<rect class="rp-plot" x="${L}" y="${T}" width="${IW}" height="${PH}"/>`;
+  [0.25,0.5,0.75,1].forEach(p=>{
+    g+=`<line class="rp-grid" x1="${L}" y1="${y(p).toFixed(1)}" x2="${L+IW}" y2="${y(p).toFixed(1)}"/>`;
+  });
+  for(let p=0;p<=1.0001;p+=0.25)
+    g+=`<text class="rp-tick" x="${L-7}" y="${(y(p)+3.5).toFixed(1)}" text-anchor="end">${(p*100).toFixed(0)}%</text>`;
+
+  let d='';
+  const steps=Math.min(n,320);
+  for(let i=0;i<steps;i++){
+    const idx=Math.round(i*(n-1)/(steps-1)), v=Math.log10(sorted[idx]), p=(idx+1)/n;
+    d+=(i?'L':'M')+Math.min(Math.max(x(v),L),L+IW).toFixed(2)+' '+y(p).toFixed(2)+' ';
+  }
+  g+=`<path class="rp-curve" d="${d}"/>`;
+
+  /* percentile delimiters */
+  [[st.p05,0.05,'5th'],[st.median,0.5,'median'],[st.p95,0.95,'95th']].forEach(t=>{
+    const px=Math.min(Math.max(x(Math.log10(t[0])),L),L+IW);
+    g+=`<line class="rp-delim" x1="${px.toFixed(1)}" y1="${y(t[1]).toFixed(1)}" x2="${px.toFixed(1)}" y2="${B}"/>
+      <line class="rp-lead" x1="${L}" y1="${y(t[1]).toFixed(1)}" x2="${px.toFixed(1)}" y2="${y(t[1]).toFixed(1)}"/>
+      <circle class="rp-pt" cx="${px.toFixed(1)}" cy="${y(t[1]).toFixed(1)}" r="3.2" fill-opacity="1"/>
+      <text class="rp-tick" x="${px.toFixed(1)}" y="${(y(t[1])-7).toFixed(1)}" text-anchor="middle">${t[2]}</text>`;
+  });
+
+  /* reference levels with exceedance probabilities */
+  (cfg.refs||[]).forEach((rf,i)=>{
+    const lv=Math.log10(rf.v); if(lv<lo||lv>hi) return;
+    const px=x(lv); let below=0; while(below<n&&sorted[below]<=rf.v) below++;
+    const exc=1-below/n;
+    const right=px>L+IW-116;
+    g+=`<line class="rp-ref" x1="${px.toFixed(1)}" y1="${T}" x2="${px.toFixed(1)}" y2="${B}"/>
+      <text class="rp-note" x="${(px+(right?-6:6)).toFixed(1)}" y="${B-28-i*32}"
+        text-anchor="${right?'end':'start'}">${esc(rf.label)}</text>
+      <text class="rp-note" x="${(px+(right?-6:6)).toFixed(1)}" y="${B-15-i*32}"
+        text-anchor="${right?'end':'start'}">P(exceed) = ${(exc*100).toFixed(2)}%</text>`;
+  });
+
+  g+=`<path class="rp-axis" d="M${L} ${T} L${L} ${B} L${L+IW} ${B}"/>`;
+  rpTicks(lo,hi,true,narrow?5:8).forEach(t=>{
+    g+=`<line class="rp-axis" x1="${x(t.v).toFixed(1)}" y1="${B}" x2="${x(t.v).toFixed(1)}" y2="${B+5}"/>
+      <text class="rp-tick" x="${x(t.v).toFixed(1)}" y="${B+17}" text-anchor="middle">${t.t}</text>`;
+  });
+  const al=rpAxisLabel(cfg.xlabel,L+IW/2,B+34,IW+24), lgY=B+46+(al.lines-1)*14;
+  g+=al.svg+`<text class="rp-axlab" transform="translate(13 ${T+PH/2}) rotate(-90)" text-anchor="middle">
+      Cumulative probability</text>
+    <line class="rp-curve" x1="${L}" y1="${lgY}" x2="${L+20}" y2="${lgY}"/>
+    <text class="rp-tick" x="${L+26}" y="${lgY+4}">Ascending cumulative distribution</text>`;
+  let blockH=lgY+14;
+
+  g=`<text class="rp-title" x="0" y="15">${esc(cfg.title||'')}</text>
+    <text class="rp-sub" x="0" y="33">${esc(cfg.subtitle||(st.n.toLocaleString()+' iterations'))}</text>`+g;
+
+  const bx=rpStatsBox(narrow?0:plotW+16, narrow?blockH+10:T, boxW, st,
+    'STATISTICS'+(cfg.units?' — '+cfg.units:''), narrow?2:1);
+  g+=bx.svg;
+  const H=narrow?blockH+10+bx.h:Math.max(blockH,T+bx.h);
+  return `<svg class="rp" viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" role="img"
+    aria-label="${esc((cfg.title||'Cumulative distribution')+'. Ascending cumulative probability with reference levels marked.')}">${g}</svg>`;
+}
+
+/* ---- @RISK-style signed tornado of standardised regression coefficients ---- */
+function tornadoPanelSVG(w,terms,cfg){
+  cfg=cfg||{};
+  const rows=(terms||[]).slice(0,cfg.max||10);
+  if(!rows.length) return '<div class="rp-empty">No sensitivity results are available yet.</div>';
+  const narrow=w<620;
+  const nameW=Math.min(narrow?132:206,Math.max(96,Math.round(w*0.34)));
+  const L=nameW+8, R=narrow?44:56, T=52, rowH=narrow?24:28;
+  const IW=Math.max(60,w-L-R), H0=T+rows.length*rowH+46;
+  const mx=Math.max(Math.max.apply(null,rows.map(r=>Math.abs(r.src))),0.05)*1.18;
+  const cx=L+IW/2, x=v=>cx+v/mx*(IW/2);
+  const cut=Math.max(8,Math.floor(nameW/6.3));
+
+  let g=`<rect class="rp-plot" x="${L}" y="${T}" width="${IW}" height="${rows.length*rowH}"/>`;
+  rpNice(-mx,mx,narrow?4:6).forEach(v=>{
+    g+=`<line class="rp-grid" x1="${x(v).toFixed(1)}" y1="${T}" x2="${x(v).toFixed(1)}" y2="${T+rows.length*rowH}"/>
+      <text class="rp-tick" x="${x(v).toFixed(1)}" y="${T+rows.length*rowH+17}" text-anchor="middle">${v.toFixed(1).replace('-','−')}</text>`;
+  });
+  rows.forEach((r,i)=>{
+    const y=T+i*rowH+rowH/2, bh=Math.min(16,rowH-8);
+    const x0=Math.min(cx,x(r.src)), bwid=Math.max(Math.abs(x(r.src)-cx),1.5);
+    const cls=i===0?'rp-bar-top':(r.src>=0?'rp-bar-pos':'rp-bar-neg');
+    const nm=r.name.length>cut?r.name.slice(0,cut-1)+'…':r.name;
+    g+=`<text class="rp-name" x="${nameW}" y="${(y+4).toFixed(1)}" text-anchor="end">${esc(nm)}
+        <title>${esc(r.name)}</title></text>
+      <rect class="${cls}" x="${x0.toFixed(1)}" y="${(y-bh/2).toFixed(1)}" width="${bwid.toFixed(1)}" height="${bh}" rx="1.5"/>
+      <text class="rp-v" x="${(r.src>=0?x(r.src)+6:x(r.src)-6).toFixed(1)}" y="${(y+4).toFixed(1)}"
+        text-anchor="${r.src>=0?'start':'end'}">${r.src.toFixed(3).replace('-','−')}</text>`;
+  });
+  g+=`<line class="rp-axis" x1="${cx}" y1="${T-6}" x2="${cx}" y2="${T+rows.length*rowH+6}"/>
+    <text class="rp-axlab" x="${cx}" y="${T+rows.length*rowH+34}" text-anchor="middle">${
+      esc(cfg.xlabel||'Standardised regression coefficient on annual risk')}</text>`;
+  g=`<text class="rp-title" x="0" y="15">${esc(cfg.title||'Tornado of input importance')}</text>
+    <text class="rp-sub" x="0" y="33">${esc(cfg.subtitle||'')}</text>`+g;
+  return `<svg class="rp" viewBox="0 0 ${w} ${H0}" width="${w}" height="${H0}" role="img"
+    aria-label="${esc('Tornado diagram. Inputs ranked by standardised regression coefficient on annual risk. '+
+      rows.map(r=>r.name+' '+r.src.toFixed(3)).join('; ')+'.')}">${g}</svg>`;
+}
+
+/* ---- scatter of the most influential input against the output ---- */
+function scatterPanelSVG(w,cfg){
+  const xr=cfg.x||[], yr=cfg.y||[], px=[], py=[];
+  const logx=!!cfg.logx, logy=!!cfg.logy;
+  for(let i=0;i<xr.length&&i<yr.length;i++){
+    let a=xr[i],b=yr[i];
+    if(!isFinite(a)||!isFinite(b)) continue;
+    if(logx){ if(a<=0) continue; a=Math.log10(a); }
+    if(logy){ if(b<=0) continue; b=Math.log10(b); }
+    px.push(a); py.push(b);
+  }
+  if(px.length<5) return '<div class="rp-empty">Not enough paired values to plot a scatter yet.</div>';
+  const narrow=w<620;
+  const L=54,R=18,T=50,PH=narrow?210:252, IW=Math.max(60,w-L-R), B=T+PH;
+  const xlo=Math.min.apply(null,px), xhi=Math.max.apply(null,px);
+  const ylo=Math.min.apply(null,py), yhi=Math.max.apply(null,py);
+  const xp=(xhi-xlo)*0.04||1, yp=(yhi-ylo)*0.04||1;
+  const x0=xlo-xp,x1=xhi+xp,y0=ylo-yp,y1=yhi+yp;
+  const X=v=>L+(v-x0)/(x1-x0)*IW, Y=v=>B-(v-y0)/(y1-y0)*PH;
+
+  /* Pearson correlation and least-squares line on the plotted scale */
+  const n=px.length; let mx=0,my=0;
+  for(let i=0;i<n;i++){mx+=px[i];my+=py[i];} mx/=n; my/=n;
+  let sxx=0,syy=0,sxy=0;
+  for(let i=0;i<n;i++){const a=px[i]-mx,b=py[i]-my; sxx+=a*a; syy+=b*b; sxy+=a*b;}
+  const r=(sxx>0&&syy>0)?sxy/Math.sqrt(sxx*syy):0, slope=sxx>0?sxy/sxx:0;
+
+  let g=`<rect class="rp-plot" x="${L}" y="${T}" width="${IW}" height="${PH}"/>`;
+  const yt=rpTicks(y0,y1,logy,5), xt=rpTicks(x0,x1,logx,narrow?4:6);
+  yt.forEach(t=>{ if(t.v<y0||t.v>y1) return;
+    g+=`<line class="rp-grid" x1="${L}" y1="${Y(t.v).toFixed(1)}" x2="${L+IW}" y2="${Y(t.v).toFixed(1)}"/>
+      <text class="rp-tick" x="${L-7}" y="${(Y(t.v)+3.5).toFixed(1)}" text-anchor="end">${t.t}</text>`;});
+
+  const stride=Math.max(1,Math.ceil(n/2500));
+  let pts='';
+  for(let i=0;i<n;i+=stride)
+    pts+=`<circle cx="${X(px[i]).toFixed(1)}" cy="${Y(py[i]).toFixed(1)}" r="1.9"/>`;
+  g+=`<g class="rp-pt">${pts}</g>`;
+  g+=`<line class="rp-fit" x1="${X(x0).toFixed(1)}" y1="${Y(my+slope*(x0-mx)).toFixed(1)}"
+    x2="${X(x1).toFixed(1)}" y2="${Y(my+slope*(x1-mx)).toFixed(1)}"/>`;
+
+  g+=`<path class="rp-axis" d="M${L} ${T} L${L} ${B} L${L+IW} ${B}"/>`;
+  xt.forEach(t=>{ if(t.v<x0||t.v>x1) return;
+    g+=`<line class="rp-axis" x1="${X(t.v).toFixed(1)}" y1="${B}" x2="${X(t.v).toFixed(1)}" y2="${B+5}"/>
+      <text class="rp-tick" x="${X(t.v).toFixed(1)}" y="${B+17}" text-anchor="middle">${t.t}</text>`;});
+  const al=rpAxisLabel(cfg.xlabel,L+IW/2,B+34,IW+24), lgY=B+46+(al.lines-1)*14;
+  g+=al.svg+`<text class="rp-axlab" transform="translate(14 ${T+PH/2}) rotate(-90)" text-anchor="middle">${esc(cfg.ylabel||'')}</text>
+    <line class="rp-fit" x1="${L}" y1="${lgY}" x2="${L+20}" y2="${lgY}"/>
+    <text class="rp-tick" x="${L+26}" y="${lgY+4}">Least-squares line, Pearson r = ${r.toFixed(3).replace('-','−')}${
+      cfg.src!==undefined?', SRC = '+cfg.src.toFixed(3).replace('-','−'):''}, ${n.toLocaleString()} pairs</text>`;
+  const H=lgY+14;
+  g=`<text class="rp-title" x="0" y="15">${esc(cfg.title||'')}</text>
+    <text class="rp-sub" x="0" y="33">${esc((cfg.subtitle?cfg.subtitle+' \u00b7 ':'')+n.toLocaleString()+' paired iterations')}</text>`+g;
+  return `<svg class="rp" viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" role="img"
+    aria-label="${esc((cfg.title||'Scatter plot')+'. Pearson correlation '+r.toFixed(3)+' across '+n+' paired iterations.')}">${g}</svg>`;
+}
+
+/* mount helper: measures the host element and rebuilds at that width. Builders
+   are remembered so the panels can be re-laid out on resize and before print,
+   where the paper width is not the screen width. */
+const RP_REG={};
+function rpMount(id,build,forceW){
+  const el=document.getElementById(id); if(!el){ delete RP_REG[id]; return; }
+  RP_REG[id]=build;
+  const w=forceW||Math.max(300,Math.round(el.clientWidth||
+    (el.parentNode&&el.parentNode.clientWidth)||640));
+  try{ el.innerHTML=build(w); }
+  catch(e){ console.error('panel '+id,e); el.innerHTML='<div class="rp-empty">This panel could not be drawn.</div>'; }
+}
+function rpRelayout(forceW){
+  Object.keys(RP_REG).forEach(id=>{
+    if(!document.getElementById(id)){ delete RP_REG[id]; return; }
+    rpMount(id,RP_REG[id],forceW);
+  });
+}
+window.addEventListener('beforeprint',()=>rpRelayout(760));
+window.addEventListener('afterprint',()=>rpRelayout(null));
+const rpHost=(id,cap)=>`<div class="chartbox"><div class="rp-host" id="${id}"></div>${
+  cap?`<div class="cap" style="margin:8px 0 0">${cap}</div>`:''}</div>`;
 
 /* ------------------------------------------------------------ components */
 const tile=(k,v,s,accent)=>`<div class="tile${accent?' accent':''}"><div class="k">${k}</div>
@@ -542,10 +947,10 @@ V.home=()=>{
       ${irelandMapSVG(COUNTIES.find(c=>c.n===P.county.v)?P.county.v:null)}</div>
     <div class="chartbox"><h3>Distribution of annual risk</h3>
       <div class="cap">Teal below the WHO 10&#8315;&#8310; reference, amber to 10&#8315;&#8309;, red above.</div>
-      <canvas id="c-hist"></canvas></div>
+      <canvas id="c-hist" role="img" aria-label="Histogram of the simulated annual probability of infection, coloured against the WHO reference level"></canvas></div>
     <div class="chartbox"><h3>National bTB trend</h3>
       <div class="cap">Herd incidence, 2010 to 2024, against reactor numbers.</div>
-      <canvas id="c-trend"></canvas></div>
+      <canvas id="c-trend" role="img" aria-label="Line and bar chart of national bovine tuberculosis herd incidence and reactor numbers, 2010 to 2024"></canvas></div>
   </div>
 
   ${siteFooter()}`;
@@ -779,7 +1184,7 @@ function groupIntro(id){
     dates:'The four dates place the batch relative to the retrospective window and set the maturation age. Test sensitivity governs how much undetected infection the model carries, through the retrospective uncertainty factor.',
     cheese:'Cheese type selects the D-value used for maturation inactivation. Setting maturation age to 0 replaces the fixed value with the Pert(30, 120, 365) distribution for Irish artisan cheese.',
     farm:'Herd size and herd incidence are fitted to CSO returns. Within-herd prevalence follows Collins and More. These are the inputs behind the infected-cow count.',
-    shed:'Shedding is split between animals that would react to the tuberculin test and animals that would not. The weighted mix is what enters the bulk tank.',
+    shed:'The load entering the bulk tank is split between animals that would react to the tuberculin test and animals that would not, and the prevalence-weighted mix is carried forward. Each term is a composite per-animal load over a milking day, combining how often an infected animal sheds with how much it sheds, because no measured estimate exists for the quantity of M. bovis shed in the milk of tuberculin-positive cattle.',
     proc:'Curd partitioning concentrates cells; maturation inactivates them. Post-ripening storage adds a small temperature-dependent reduction at retail and in the home.',
     cc:'Post-process contamination bypasses maturation. In a well-matured cheese it becomes the dominant term in the final concentration, which is why it ranks so high in the sensitivity analysis.',
     dr:'No validated human oral dose-response model exists for M. bovis. The infectivity parameter is a truncated lognormal spanning three orders of magnitude and it dominates output variance.',
@@ -818,9 +1223,10 @@ function groupReadout(id,o){
   if(id==='shed'){
     const sp=(o.shedPosMin+4*o.shedPosMode+o.shedPosMax)/6, sn=(o.shedNegMin+4*o.shedNegMode+o.shedNegMax)/6;
     const pw=o.pWithinA/(o.pWithinA+o.pWithinB);
-    return `<dl class="kv"><dt>Reactor shedding mean</dt><dd>${sci(sp)} CFU/mL</dd>
-      <dt>Non-reactor shedding mean</dt><dd>${sci(sn)} CFU/mL</dd>
-      <dt>Weighted mix</dt><dd>${sci(pw*sp+(1-pw)*sn)} CFU/mL</dd></dl>`;
+    const u=' CFU per animal per milking day';
+    return `<dl class="kv"><dt>Reactor load term, mean</dt><dd>${sci(sp)}${u}</dd>
+      <dt>Non-reactor load term, mean</dt><dd>${sci(sn)}${u}</dd>
+      <dt>Weighted mix</dt><dd>${sci(pw*sp+(1-pw)*sn)}${u}</dd></dl>`;
   }
   if(id==='proc'){
     const cf=(o.curdMin+4*o.curdMode+o.curdMax)/6*((o.concMin+4*o.concMode+o.concMax)/6);
@@ -924,17 +1330,31 @@ V.results=()=>{
     ${tile('Maximum iteration',sci(r.max),'worst sampled combination')}
   </div>
 
-  <div class="chartbox" style="margin-top:18px"><h3>Distribution of annual risk</h3>
-    <div class="cap">${r.n.toLocaleString()} iterations. ${fix(100*above6/r.n,1)}% exceed 10⁻⁶ and
-    ${fix(100*above5/r.n,1)}% exceed 10⁻⁵.</div><canvas id="c-hist2"></canvas></div>
+  <h2>Output distributions</h2>
+  <p>Each panel reports the simulated output as a relative-frequency histogram with delimiters at the
+  5th and 95th percentiles, the probability carried by each of the three regions, a fitted density
+  scaled to the bin width, and the descriptive statistics of the output in its own units.</p>
+  <div class="grid" style="margin-top:14px">
+    ${rpHost('rp-risk',`${fix(100*above6/r.n,1)}% of iterations exceed the WHO tolerable reference of
+      10⁻⁶ and ${fix(100*above5/r.n,1)}% exceed 10⁻⁵. The fitted curve is a normal density on the
+      log₁₀ scale, that is a lognormal in natural units.`)}
+    ${rpHost('rp-cum',`Ascending cumulative form of the same output. The two reference levels carry
+      the exceedance probabilities read directly off the simulated sample.`)}
+  </div>
+  <div class="split" style="margin-top:14px">
+    ${rpHost('rp-dose','Ingested dose per eating occasion, the product of the concentration at consumption and the sampled serving size.')}
+    ${rpHost('rp-btm','Bulk tank concentration leaving the farm, before any processing step.')}
+    ${rpHost('rp-conc','Concentration in the cheese as eaten, after maturation, storage and post-process contamination.')}
+    ${rpHost('rp-lr','Total log₁₀ reduction, maturation plus post-ripening storage. Plotted on a linear axis with a fitted normal density.')}
+  </div>
 
   <div class="split" style="margin-top:16px">
     <div class="chartbox"><h3>Concentration through the chain</h3>
       <div class="cap">Curd partitioning raises concentration; maturation is the dominant reduction.</div>
-      <canvas id="c-water"></canvas></div>
+      <canvas id="c-water" role="img" aria-label="Step chart of M. bovis concentration through the bulk tank, curd, maturation and consumption stages"></canvas></div>
     <div class="chartbox"><h3>Maturation kinetics</h3>
       <div class="cap">First-order inactivation at the D-value mean and ± one standard deviation.</div>
-      <canvas id="c-decay"></canvas></div>
+      <canvas id="c-decay" role="img" aria-label="First-order inactivation curves during maturation at the D-value mean and plus or minus one standard deviation"></canvas></div>
   </div>
 
   <h2>Pathway values</h2>
@@ -965,9 +1385,35 @@ V.results=()=>{
 };
 const count=(a,t)=>{let c=0;for(let i=0;i<a.length;i++) if(a[i]>t) c++; return c;};
 V.results.after=()=>{ const r=ensure(), o=gather();
-  chartHist(document.getElementById('c-hist2'),r);
+  resultPanels(r);
   chartWaterfall(document.getElementById('c-water'),o,r);
   chartDecay(document.getElementById('c-decay'),o,r); };
+
+/* the five @RISK-style output panels plus the cumulative curve */
+function resultPanels(r){
+  rpMount('rp-risk',w=>distPanelSVG(w,{data:r.risk, log:true,
+    title:'Annual probability of infection per consumer',
+    xlabel:'log₁₀ annual probability of infection (per person per year)',
+    units:'probability per year',
+    refs:[{v:1e-6,label:'WHO 10⁻⁶'},{v:1e-5,label:'10⁻⁵'}]}));
+  rpMount('rp-cum',w=>cumPanelSVG(w,{data:r.risk,
+    title:'Annual probability of infection, cumulative',
+    xlabel:'log₁₀ annual probability of infection (per person per year)',
+    units:'probability per year',
+    refs:[{v:1e-6,label:'WHO 10⁻⁶'},{v:1e-5,label:'10⁻⁵'}]}));
+  rpMount('rp-dose',w=>distPanelSVG(w,{data:r.dose, log:true,
+    title:'Ingested dose per serving',
+    xlabel:'log₁₀ dose (CFU per serving)', units:'CFU per serving'}));
+  rpMount('rp-btm',w=>distPanelSVG(w,{data:r.btm, log:true,
+    title:'Bulk tank concentration',
+    xlabel:'log₁₀ concentration (CFU/mL)', units:'CFU/mL'}));
+  rpMount('rp-conc',w=>distPanelSVG(w,{data:r.conc, log:true,
+    title:'Concentration at consumption',
+    xlabel:'log₁₀ concentration (CFU/g)', units:'CFU/g'}));
+  rpMount('rp-lr',w=>distPanelSVG(w,{data:r.lrAll, log:false,
+    title:'Total log₁₀ reduction',
+    xlabel:'total log₁₀ reduction (maturation and storage)', units:'log₁₀'}));
+}
 
 /* ---------- scenarios ---------- */
 let SCEN=null;
@@ -996,7 +1442,7 @@ V.scenarios=()=>{
 
   <div class="chartbox" style="margin-top:18px"><h3>Annual risk by county profile</h3>
     <div class="cap">Bar and vertical rule mark the mean; whiskers span the 5th to 95th percentile.</div>
-    <canvas id="c-scen"></canvas>
+    <canvas id="c-scen" role="img" aria-label="Logarithmic bar chart of mean annual risk by county tier with 5th to 95th percentile whiskers"></canvas>
     <p class="small" style="margin-bottom:0">Risk does not scale linearly with county incidence. Once a
     cheese is well matured, most of the dose arrives after processing, and post-process contamination
     is independent of herd status. County incidence governs what enters the vat; facility hygiene
@@ -1010,7 +1456,7 @@ V.scenarios=()=>{
       ${irelandMapSVG(COUNTIES.find(c=>c.n===base.county)?base.county:null)}</div>
     <div class="chartbox"><h3>Ranked</h3>
       <div class="cap">The dashed rule is the national herd-weighted mean of 6.06%.</div>
-      <canvas id="c-cty"></canvas></div>
+      <canvas id="c-cty" role="img" aria-label="Ranked bar chart of 2024 herd incidence for the 29 Regional Veterinary Office areas"></canvas></div>
   </div>
 
   <h2>Raw milk against pasteurisation</h2>
@@ -1061,9 +1507,13 @@ V.sensitivity=()=>{
   coefficient is the change in output, in standard deviations, for a one standard deviation change in
   that input with the others held still.</p>
 
-  <div class="chartbox" style="margin-top:14px"><h3>Tornado</h3>
-    <div class="cap">Model R² = ${fix(r.src.r2,3)} across ${r.n.toLocaleString()} iterations.</div>
-    <canvas id="c-tor"></canvas></div>
+  <div class="grid" style="margin-top:14px">
+    ${rpHost('rp-tor',`Bars run left for a negative coefficient and right for a positive one, so the
+      direction of each effect is visible as well as its size. The top-ranked input is highlighted.`)}
+    ${rpHost('rp-sca',`Every iteration plotted as one point, with the least-squares line through it.
+      This is the input that carries the largest coefficient, so the scatter shows the shape of the
+      relationship the single coefficient summarises.`)}
+  </div>
 
   <div class="tablewrap" style="margin-top:16px"><table>
     <tr><th>Rank</th><th>Input</th><th>SRC</th><th>Share of explained variance</th><th>Controllable</th></tr>
@@ -1092,7 +1542,34 @@ const CONTROL={ r:'No, research gap', ccC:'Yes, facility hygiene', ccP:'Yes, fac
   pHerd:'No, epidemiology', serving:'No, consumer behaviour', shedPos:'No, biology',
   dVal:'Partly, via cheese type', matur:'Yes, age at sale', susc:'No, host factor',
   bcg:'No, population immunity', pWithin:'No, epidemiology', nHerd:'No, case fact' };
-V.sensitivity.after=()=>chartTornado(document.getElementById('c-tor'),ensure().src.terms);
+/* axis wording for the sampled inputs, used by the scatter panel */
+const X_AXIS={ r:'infectivity parameter r (probability per organism)',
+  ccC:'cross-contamination level (CFU/g)', ccP:'cross-contamination probability',
+  pHerd:'herd-level incidence (proportion)', serving:'serving size (g)',
+  shedPos:'reactor load term (CFU per animal per milking day)', dVal:'D-value (days)',
+  matur:'maturation age (days)', susc:'host susceptibility (proportion)',
+  bcg:'BCG protection factor (proportion)', pWithin:'within-herd prevalence (proportion)',
+  nHerd:'herd size (cows)' };
+
+function sensPanels(r){
+  rpMount('rp-tor',w=>tornadoPanelSVG(w,r.src.terms,{
+    title:'Tornado of input importance',
+    subtitle:'Model R² = '+fix(r.src.r2,3)+' across '+r.n.toLocaleString()+' iterations'}));
+  const top=r.src.terms[0], xs=top?r.X[top.key]:null;
+  rpMount('rp-sca',w=>{
+    if(!xs||!xs.length) return '<div class="rp-empty">No sampled input values are available yet.</div>';
+    let mn=Infinity,mx=-Infinity;
+    for(let i=0;i<xs.length;i++){ if(xs[i]<mn) mn=xs[i]; if(xs[i]>mx) mx=xs[i]; }
+    const logx=mn>0&&mx/mn>100;
+    const nm=X_AXIS[top.key]||top.name;
+    return scatterPanelSVG(w,{x:xs, y:r.risk, logx:logx, logy:true, src:top.src,
+      title:'Most influential input against annual risk',
+      subtitle:top.name+', rank 1 of '+r.src.terms.length,
+      xlabel:(logx?'log₁₀ ':'')+nm,
+      ylabel:'log₁₀ annual probability of infection'});
+  });
+}
+V.sensitivity.after=()=>sensPanels(ensure());
 
 /* ---------- primary models ---------- */
 V.primary=()=>{
@@ -1115,7 +1592,7 @@ V.primary=()=>{
   </dl>
   <div class="chartbox"><h3>Inactivation curves</h3>
     <div class="cap">Central curve at the D-value mean, dashed at ± one standard deviation.</div>
-    <canvas id="c-decay2"></canvas></div>
+    <canvas id="c-decay2" role="img" aria-label="First-order inactivation curves during maturation at the D-value mean and plus or minus one standard deviation"></canvas></div>
   <div class="tablewrap" style="margin-top:14px"><table>
     <tr><th>Matrix</th><th>Inoculum level</th><th>D-value (days)</th><th>Source</th></tr>
     ${DVALUES.map(d=>`<tr><td>${d.type}</td><td>${d.level}, ${d.inoc}</td>
@@ -1140,7 +1617,7 @@ V.primary=()=>{
   <div class="eq">r<sub>eff</sub> = r × Susceptibility × (2 − BCG<sub>factor</sub>)</div>
   <div class="chartbox"><h3>Infection probability against dose</h3>
     <div class="cap">Both axes log₁₀. The modelled serving dose is marked.</div>
-    <canvas id="c-dr2"></canvas></div>
+    <canvas id="c-dr2" role="img" aria-label="Exponential dose-response curves of infection probability against ingested dose"></canvas></div>
   <div class="warn" style="margin-top:14px">No validated human oral dose-response model exists for
   <em>M. bovis</em>. Published work covers animal challenge by respiratory and intratracheal routes,
   and human data come from aerosol BCG studies. The parameter r is therefore an uncertainty term, and
@@ -1148,7 +1625,8 @@ V.primary=()=>{
 
   <h2>4. Mass balance: bulk tank dilution</h2>
   <div class="eq">C<sub>BTM</sub> = (N<sub>infected</sub> × Shedding) ÷ V<sub>milk</sub> × 1000</div>
-  <p class="small">Shedding is the prevalence-weighted mix of reactor and non-reactor animals. Milk
+  <p class="small">The shedding term is the prevalence-weighted mix of reactor and non-reactor animals,
+  each expressed as a composite load contributed to the bulk tank by one animal over a milking day. Milk
   volume is herd size times daily yield times the scenario farm-size factor.</p>
 
   <h2>5. Mass balance: curd partitioning and annual accumulation</h2>
@@ -1361,7 +1839,7 @@ V.surveillance=()=>{
 
   <div class="chartbox" style="margin-top:18px"><h3>National trend, 2010 to 2024</h3>
     <div class="cap">Line is herd incidence against the left axis. Bars are reactor numbers against the
-    right axis.</div><canvas id="c-trend2"></canvas></div>
+    right axis.</div><canvas id="c-trend2" role="img" aria-label="Line and bar chart of national bovine tuberculosis herd incidence and reactor numbers, 2010 to 2024"></canvas></div>
 
   <div class="tablewrap" style="margin-top:16px"><table>
     <tr><th>Year</th><th>Herds</th><th>Restricted</th><th>Herd incidence</th><th>Reactors</th>
@@ -1382,7 +1860,7 @@ V.surveillance=()=>{
       ${irelandMapSVG(COUNTIES.find(c=>c.n===P.county.v)?P.county.v:null)}</div>
     <div class="chartbox"><h3>Ranked</h3>
       <div class="cap">Dashed rule marks the national herd-weighted mean.</div>
-      <canvas id="c-cty2"></canvas></div>
+      <canvas id="c-cty2" role="img" aria-label="Ranked bar chart of 2024 herd incidence for the 29 Regional Veterinary Office areas"></canvas></div>
   </div>
   <div class="tablewrap" style="margin-top:14px"><table>
     <tr><th>Rank</th><th>Regional Veterinary Office</th><th>Herds</th><th>Herd incidence</th>
@@ -1700,7 +2178,7 @@ V.report=()=>{
       <tr><th>Module</th><th>Basis</th><th>Source</th></tr>
       <tr><td>Herd infection</td><td>Beta(58.02, 1394.92) herd incidence; Beta(2.8, 25.7) within-herd prevalence</td>
         <td>CSO DAA01 2010–2023; Collins and More 2022</td></tr>
-      <tr><td>Milk shedding</td><td>Pert reactor and non-reactor shedding, prevalence weighted</td>
+      <tr><td>Milk shedding</td><td>Pert reactor and non-reactor per-animal load terms, prevalence weighted; elicited composites, no measured estimate exists</td>
         <td>Collins 2021; Nuñez-Garcia et al. 2017</td></tr>
       <tr><td>Cheese manufacture</td><td>Curd retention Pert(0.75, 0.84, 0.95); concentration factor Pert(3, 6, 10)</td>
         <td>Forgrave et al. 2016; Walstra et al.</td></tr>
@@ -1740,6 +2218,11 @@ V.report=()=>{
     </table></div>
     <p><strong>Risk band: ${b.t}.</strong> ${b.note} ${fix(100*count(r.risk,1e-6)/r.n,1)}% of iterations
     exceed the WHO reference level.</p>
+    <div class="grid" style="margin-top:12px">
+      ${rpHost('rp-rep1','Simulated annual probability of infection per consumer, with delimiters at the 5th and 95th percentiles and a fitted lognormal density.')}
+      ${rpHost('rp-rep2','The same output in ascending cumulative form, with the exceedance probability at each reference level.')}
+      ${rpHost('rp-rep3','Inputs ranked by standardised regression coefficient on annual risk.')}
+    </div>
 
     <h3>8. Critical points for the risk manager</h3>
     <div class="tablewrap"><table>
@@ -1777,6 +2260,20 @@ V.report=()=>{
   </div>`;
 };
 V.report.after=()=>{
+  const r=ensure();
+  rpMount('rp-rep1',w=>distPanelSVG(w,{data:r.risk, log:true,
+    title:'Annual probability of infection per consumer',
+    xlabel:'log₁₀ annual probability of infection (per person per year)',
+    units:'probability per year',
+    refs:[{v:1e-6,label:'WHO 10⁻⁶'},{v:1e-5,label:'10⁻⁵'}]}));
+  rpMount('rp-rep2',w=>cumPanelSVG(w,{data:r.risk,
+    title:'Annual probability of infection, cumulative',
+    xlabel:'log₁₀ annual probability of infection (per person per year)',
+    units:'probability per year',
+    refs:[{v:1e-6,label:'WHO 10⁻⁶'},{v:1e-5,label:'10⁻⁵'}]}));
+  rpMount('rp-rep3',w=>tornadoPanelSVG(w,r.src.terms,{max:8,
+    title:'Tornado of input importance',
+    subtitle:'Model R² = '+fix(r.src.r2,3)+' across '+r.n.toLocaleString()+' iterations'}));
   const pr=document.getElementById('printrec');
   if(pr) pr.addEventListener('click',()=>{
     if(window.self!==window.top){
